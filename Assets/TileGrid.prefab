@@ -9,7 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 9036016477254803723}
-  - component: {fileID: 4006111568661195046}
+  - component: {fileID: 944254574759885604}
   m_Layer: 0
   m_Name: TileGrid
   m_TagString: Untagged
@@ -32,7 +32,7 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &4006111568661195046
+--- !u!114 &944254574759885604
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _tilePrefab: {fileID: 6425586903367243831, guid: 8b7d817b8aa91304ab3886cc9294cc57, type: 3}
   _width: 15
-  _height: 32
+  _height: 30
