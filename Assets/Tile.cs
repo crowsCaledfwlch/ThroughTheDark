@@ -1,55 +1,71 @@
 using System.Collections;
 using System.Collections.Generic;
 
+using Unity.Netcode;
 using UnityEngine;
 
 namespace TTD
 {
-
-    public class Tile : MonoBehaviour
+    public class Tile : NetworkBehaviour
     {
         public Tile above, upR, downR, below, downL, upL; // 1 2 3 4 5 6. 1->3->6->4->5->2->1  
-        bool set;
+        NetworkVariable<bool> set = new NetworkVariable<bool>();
 
         [Range(0, 3)] // 0 plain, 1 treasure, 2 monster, 3 pitfall
-        private int type;
+        private NetworkVariable<int> type = new NetworkVariable<int>();
 
         [Range(0, 2)] // 00 line, 01 blob, 02 corner, 10-2 2 tiles, 20 M, 21 Y, 22 line, 30-2 big C
         private int shape;
 
         [Range(0, 5)]
-        int rotation;
+        static NetworkVariable<int> rotation = new NetworkVariable<int>();
 
-        Dictionary<(int, int), (int, int, int, int)> tilesPositions;
-        private SpriteRenderer renderer;
 
-        void Start()
-        {
-            renderer = GetComponent<SpriteRenderer>();
-            set = false;
-            //centre = false;
-            type = 0;
-            shape = 0;
-            rotation = 0;
-            tilesPositions = new Dictionary<(int, int), (int, int, int, int)>()
+        Dictionary<(int, int), (int, int, int, int)> tilesPositions = new Dictionary<(int, int), (int, int, int, int)>()
             {
                 {(0,0), (1,1,0,0)},{(0,1), (1,3,0,0)},{(0,6), (1,2,0,0)},
                 {(1,0), (1,0,0,0)},
                 {(2,0), (6,1,2,0)},{(2,1), (1,1,3,0)},{(2,2), (1,1,1,0)},
                 {(3,0), (6,1,1,2)}
             };
+        private SpriteRenderer renderer;
+        private NetworkVariable<Color> setColor = new NetworkVariable<Color>();
+        bool mouseOver = false;
+        void Start()
+        {
+            setColor.Value = Color.white;
+            renderer = GetComponent<SpriteRenderer>();
+            set.Value = false;
+            type.Value = 0;
+            shape = 0;
+            rotation.Value = 0;
+        }
+
+        void FixedUpdate()
+        {
+            if (renderer == null)
+            {
+                renderer = GetComponent<SpriteRenderer>();
+            }
+            renderer.color = setColor.Value;
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        void rotateServerRpc()
+        {
+            rotation.Value++;
+            if (rotation.Value > 5)
+            {
+                rotation.Value = 0;
+            }
         }
 
         void Update()
         {
-            if (Input.GetKeyDown("r"))
+            if (Input.GetKeyDown("r") && mouseOver)
             {
-                OnMouseExit();
-                rotation++;
-                if (rotation > 5)
-                {
-                    rotation = 0;
-                }
+                checkProcServerRpc(1);
+                rotateServerRpc();
             }
         }
 
@@ -82,7 +98,7 @@ namespace TTD
 
         public void setType(int type)
         {
-            this.type = type;
+            this.type.Value = type;
         }
 
         public void setShape(int shape)
@@ -94,7 +110,7 @@ namespace TTD
         {
             if (ints.Length == 0 || tile == null)
             {
-                return !tile.set;
+                return !tile.set.Value;
             }
             else
             {
@@ -105,7 +121,7 @@ namespace TTD
                 }
                 Tile tempTile = null;
 
-                if (ints[0] == 0) return !tile.set;
+                if (ints[0] == 0) return !tile.set.Value;
                 switch ((ints[0] + rotation) % 6)
                 {
                     case 1:
@@ -133,132 +149,170 @@ namespace TTD
                         tempTile = tile.upL;
                         break;
                 }
-                return checkTiles(temp, tempTile, rotation) && !tile.set;
+                return checkTiles(temp, tempTile, rotation) && !tile.set.Value;
             }
         }
 
-        void colorTiles(int[] ints, Tile tile, int type, int rotation)
+        [ServerRpc(RequireOwnership = false)]
+        void checkProcServerRpc(int EED)
         {
-            if (ints.Length == 0)
-            {
-                switch (type)
+            if (EED == 0)
+            { // OO
+                if (!set.Value)
                 {
-                    case -1:
-                        tile.GetSpriteRenderer().color = Color.white;
-                        break;
-                    case 0:
-                        tile.GetSpriteRenderer().color = Color.yellow;
-                        break;
-                    case 1:
-                        tile.GetSpriteRenderer().color = Color.blue;
-                        break;
-                    case 2:
-                        tile.GetSpriteRenderer().color = Color.red;
-                        break;
-                    case 3:
-                        tile.GetSpriteRenderer().color = Color.black;
-                        break;
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape)];
+                    if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
+                    {
+                        colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                    }
+                }
+            }
+            else if (EED == 2)
+            { // OMD
+                if (!set.Value)
+                {
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape)];
+                    if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
+                    {
+                        setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                    }
                 }
             }
             else
-            {
-
-                int[] temp = new int[ints.Length - 1];
-                for (int i = 1; i < ints.Length; i++)
+            { // OMEx and catch
+                if (!set.Value)
                 {
-                    temp[i - 1] = ints[i];
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape)];
+                    if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
+                    {
+                        colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
+                    }
                 }
-                Tile tempTile = null;
-                switch (type)
-                {
-                    case -1:
-                        tile.GetSpriteRenderer().color = Color.white;
-                        break;
-                    case 0:
-                        tile.GetSpriteRenderer().color = Color.yellow;
-                        break;
-                    case 1:
-                        tile.GetSpriteRenderer().color = Color.blue;
-                        break;
-                    case 2:
-                        tile.GetSpriteRenderer().color = Color.red;
-                        break;
-                    case 3:
-                        tile.GetSpriteRenderer().color = Color.black;
-                        break;
-                }
-
-                if (ints[0] == 0) return;
-                switch ((ints[0] + rotation) % 6)
-                {
-                    case 1:
-                        tempTile = tile.above;
-                        break;
-                    case 2:
-                        tempTile = tile.upR;
-                        break;
-                    case 3:
-                        tempTile = tile.downR;
-                        break;
-                    case 4:
-                        tempTile = tile.below;
-                        break;
-                    case 5:
-                        tempTile = tile.downL;
-                        break;
-                    case 0:
-                        tempTile = tile.upL;
-                        break;
-                }
-
-                colorTiles(temp, tempTile, type, rotation);
             }
         }
 
         void OnMouseOver()
         {
-            if (!set)
-            {
-                (int, int, int, int) nextStep = tilesPositions[(type, shape)];
-                if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation))
-                {
-                    colorTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, type, rotation);
-                }
-            }
+            mouseOver = true;
+            checkProcServerRpc(0);
         }
         void OnMouseExit()
         {
-            if (!set)
-            {
-                (int, int, int, int) nextStep = tilesPositions[(type, shape)];
-                if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation))
-                {
-                    colorTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, -1, rotation);
-                }
-            }
+            mouseOver = false;
+            checkProcServerRpc(1);
         }
+
         void OnMouseDown()
         {
-            if (!set)
+            checkProcServerRpc(2);
+        }
+
+        [ClientRpc]
+        void colorTilesClientRpc(int[] ints, int type, int rotation)
+        {
+            colorTilesServerRpc(ints, type, rotation);
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        void colorTilesServerRpc(int[] ints, int type, int rotation)
+        {
+            Debug.Log("Checkin");
+            if (ints.Length == 0)
             {
-                (int, int, int, int) nextStep = tilesPositions[(type, shape)];
-                if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation))
+                switch (type)
                 {
-                    setTrue(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, type, rotation);
+                    case -1:
+                        this.setColor.Value = Color.white;
+                        break;
+                    case 0:
+                        this.setColor.Value = Color.yellow;
+                        break;
+                    case 1:
+                        this.setColor.Value = Color.blue;
+                        break;
+                    case 2:
+                        this.setColor.Value = Color.red;
+                        break;
+                    case 3:
+                        this.setColor.Value = Color.black;
+                        break;
                 }
+            }
+            else
+            {
+
+                int[] temp = new int[ints.Length - 1];
+                for (int i = 1; i < ints.Length; i++)
+                {
+                    temp[i - 1] = ints[i];
+                }
+                Tile tempTile = null;
+                switch (type)
+                {
+                    case -1:
+                        this.setColor.Value = Color.white;
+                        break;
+                    case 0:
+                        this.setColor.Value = Color.yellow;
+                        break;
+                    case 1:
+                        this.setColor.Value = Color.blue;
+                        break;
+                    case 2:
+                        this.setColor.Value = Color.red;
+                        break;
+                    case 3:
+                        this.setColor.Value = Color.black;
+                        break;
+                }
+
+                if (ints[0] == 0) return;
+                Debug.Log(ints[0]);
+                switch ((ints[0] + rotation) % 6)
+                {
+                    case 1:
+                        tempTile = this.above;
+                        break;
+                    case 2:
+                        tempTile = this.upR;
+                        break;
+                    case 3:
+                        tempTile = this.downR;
+                        break;
+                    case 4:
+                        tempTile = this.below;
+                        break;
+                    case 5:
+                        tempTile = this.downL;
+                        break;
+                    case 0:
+                        tempTile = this.upL;
+                        break;
+                }
+
+                tempTile.colorTilesClientRpc(temp, type, rotation);
             }
         }
 
-        void setTrue(int[] ints, Tile tile, int type, int rotation)
+
+        [ClientRpc]
+        void setTrueClientRpc(int[] ints, int type, int rotation)
+        {
+            setTrueServerRpc(ints, type, rotation);
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        void setTrueServerRpc(int[] ints, int type, int rotation)
         {
 
             if (ints.Length == 0)
             {
-                tile.set = true;
+                this.set.Value = true;
             }
             else
             {
-                tile.set = true;
+                this.set.Value = true;
+                Debug.Log("SHOULD BE SET");
                 int[] temp = new int[ints.Length - 1];
                 for (int i = 1; i < ints.Length; i++)
                 {
@@ -269,25 +323,25 @@ namespace TTD
                 switch ((ints[0] + rotation) % 6)
                 {
                     case 1:
-                        tempTile = tile.above;
+                        tempTile = this.above;
                         break;
                     case 2:
-                        tempTile = tile.upR;
+                        tempTile = this.upR;
                         break;
                     case 3:
-                        tempTile = tile.downR;
+                        tempTile = this.downR;
                         break;
                     case 4:
-                        tempTile = tile.below;
+                        tempTile = this.below;
                         break;
                     case 5:
-                        tempTile = tile.downL;
+                        tempTile = this.downL;
                         break;
                     case 0:
-                        tempTile = tile.upL;
+                        tempTile = this.upL;
                         break;
                 }
-                setTrue(temp, tempTile, type, rotation);
+                tempTile.setTrueClientRpc(temp, type, rotation);
             }
         }
     }
