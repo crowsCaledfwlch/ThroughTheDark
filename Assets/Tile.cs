@@ -12,18 +12,18 @@ namespace TTD
         NetworkVariable<bool> set = new NetworkVariable<bool>();
 
         [Range(0, 3)] // 0 plain, 1 treasure, 2 monster, 3 pitfall
-        private NetworkVariable<int> type = new NetworkVariable<int>();
+        static private NetworkVariable<int> type = new NetworkVariable<int>();
 
         [Range(0, 2)] // 00 line, 01 blob, 02 corner, 10-2 2 tiles, 20 M, 21 Y, 22 line, 30-2 big C
-        private int shape;
+        static private NetworkVariable<int> shape = new NetworkVariable<int>();
 
         [Range(0, 5)]
         static NetworkVariable<int> rotation = new NetworkVariable<int>();
-
+        static Tile tileBase;
 
         Dictionary<(int, int), (int, int, int, int)> tilesPositions = new Dictionary<(int, int), (int, int, int, int)>()
             {
-                {(0,0), (1,1,0,0)},{(0,1), (1,3,0,0)},{(0,6), (1,2,0,0)},
+                {(0,0), (1,1,0,0)},{(0,1), (1,3,0,0)},{(0,2), (1,2,0,0)},
                 {(1,0), (1,0,0,0)},
                 {(2,0), (6,1,2,0)},{(2,1), (1,1,3,0)},{(2,2), (1,1,1,0)},
                 {(3,0), (6,1,1,2)}
@@ -33,11 +33,12 @@ namespace TTD
         bool mouseOver = false;
         void Start()
         {
+            tileBase = this;
             setColor.Value = Color.white;
             renderer = GetComponent<SpriteRenderer>();
             set.Value = false;
             type.Value = 0;
-            shape = 0;
+            shape.Value = 0;
             rotation.Value = 0;
         }
 
@@ -96,14 +97,25 @@ namespace TTD
             downR = tile;
         }
 
-        public void setType(int type)
+        static public void setType(int type)
         {
-            this.type.Value = type;
+            Tile.type.Value = type;
         }
 
-        public void setShape(int shape)
+        static public void setShape(int shape)
         {
-            this.shape = shape;
+            Tile.shape.Value = shape;
+        }
+
+        [ServerRpc]
+        public void setTSServerRpc(int t, int s)
+        {
+            Tile.type.Value = t;
+            Tile.shape.Value = s;
+        }
+        static public void setTS(int t, int s)
+        {
+            Tile.tileBase.setTSServerRpc(t, s);
         }
 
         bool checkTiles(int[] ints, Tile tile, int rotation)
@@ -160,7 +172,7 @@ namespace TTD
             { // OO
                 if (!set.Value)
                 {
-                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape)];
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
                     if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
                     {
                         colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
@@ -171,7 +183,7 @@ namespace TTD
             { // OMD
                 if (!set.Value)
                 {
-                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape)];
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
                     if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
                     {
                         setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
@@ -182,7 +194,7 @@ namespace TTD
             { // OMEx and catch
                 if (!set.Value)
                 {
-                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape)];
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
                     if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
                     {
                         colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
@@ -216,7 +228,6 @@ namespace TTD
         [ServerRpc(RequireOwnership = false)]
         void colorTilesServerRpc(int[] ints, int type, int rotation)
         {
-            Debug.Log("Checkin");
             if (ints.Length == 0)
             {
                 switch (type)
@@ -267,7 +278,6 @@ namespace TTD
                 }
 
                 if (ints[0] == 0) return;
-                Debug.Log(ints[0]);
                 switch ((ints[0] + rotation) % 6)
                 {
                     case 1:
@@ -312,7 +322,6 @@ namespace TTD
             else
             {
                 this.set.Value = true;
-                Debug.Log("SHOULD BE SET");
                 int[] temp = new int[ints.Length - 1];
                 for (int i = 1; i < ints.Length; i++)
                 {

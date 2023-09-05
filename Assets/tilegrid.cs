@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
+using System;
 
 namespace TTD
 {
@@ -10,13 +11,35 @@ namespace TTD
         [SerializeField] private Tile _tilePrefab;
         [SerializeField] private int _width;
         [SerializeField] private int _height;
+        [SerializeField]
+        private Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
-
+        Dictionary<int, int> amountOfTiles = new Dictionary<int, int>() { { 0, 3 }, { 1, 3 }, { 2, 3 }, { 3, 15 }, { 4, 15 }, { 5, 15 }, { 6, 8 }, { 7, 8 } };
         bool generated = false;
-
+        List<int> cards = new List<int>();
+        NetworkList<int> cardPile = new NetworkList<int>();
         public override void OnNetworkSpawn()
         {
             GenerateGridServerRpc();
+            System.Random random = new System.Random();
+            for (int i = 0; i < 5; i++)
+            {
+                int key = random.Next(0, cardPile.Count);
+                cards.Add(cardPile[key]);
+                RemoveFromPileServerRpc(cardPile[key]);
+            }
+            for (int i = 0; i < 5; i++)
+            {
+                cardPieces[i].cardtype = cards[i];
+                cardPieces[i].gameObject.SetActive(true);
+            }
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        void RemoveFromPileServerRpc(int cardNum)
+        {
+            cardPile.Remove(cardNum);
+
         }
 
         [ServerRpc]
@@ -24,6 +47,14 @@ namespace TTD
         {
             if (!generated)
             {
+                System.Random random = new System.Random();
+                foreach (KeyValuePair<int, int> kvpair in amountOfTiles)
+                {
+                    for (int i = 0; i < kvpair.Value; i++)
+                    {
+                        cardPile.Add(kvpair.Key);
+                    }
+                }
                 tiles = new Dictionary<(int, int), Tile>();
                 // very complicated math to make the grid and center it
                 for (int x = (-1 * _width) + 1; x < _width + 2; x += 2)
