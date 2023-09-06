@@ -18,9 +18,16 @@ namespace TTD
         bool generated = false;
         List<int> cards = new List<int>();
         NetworkList<int> cardPile = new NetworkList<int>();
-        public override void OnNetworkSpawn()
+        NetworkList<ulong> players = new NetworkList<ulong>();
+        public bool myTurn;
+        public void EndTurn()
         {
-            GenerateGridServerRpc();
+            myTurn = false;
+            setNextTurnServerRpc(players.IndexOf(NetworkManager.Singleton.LocalClientId) + 1 % players.Count);
+        }
+        IEnumerator drawstartinghand()
+        {
+            yield return new WaitForSeconds(1);
             System.Random random = new System.Random();
             for (int i = 0; i < 5; i++)
             {
@@ -33,18 +40,34 @@ namespace TTD
                 cardPieces[i].cardtype = cards[i];
                 cardPieces[i].gameObject.SetActive(true);
             }
+
+        }
+        public override void OnNetworkSpawn()
+        {
+            if (players.Count == 0)
+            {
+                myTurn = true;
+            }
+            GenerateGridServerRpc(NetworkManager.Singleton.LocalClientId);
+            StartCoroutine(drawstartinghand());
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        void setNextTurnServerRpc(int ID)
+        {
+            NetworkManager.Singleton.ConnectedClients[players[ID]].PlayerObject.GetComponent<tilegrid>().myTurn = true;
         }
 
         [ServerRpc(RequireOwnership = false)]
         void RemoveFromPileServerRpc(int cardNum)
         {
             cardPile.Remove(cardNum);
-
         }
 
-        [ServerRpc]
-        void GenerateGridServerRpc()
+        [ServerRpc(RequireOwnership = false)]
+        void GenerateGridServerRpc(ulong ID)
         {
+            players.Add(ID);
             if (!generated)
             {
                 System.Random random = new System.Random();
@@ -67,20 +90,28 @@ namespace TTD
                         {
                             if (x < _width)
                             {
-                                spawnedTile = Instantiate(_tilePrefab, new Vector3(x - .5f, y - i / 2, -1), Quaternion.identity);
+                                spawnedTile = Instantiate(_tilePrefab, new Vector3(x - .5f, y - i / 2, -.5f), Quaternion.identity);
                                 spawnedTile.GetComponent<NetworkObject>().Spawn();
                                 spawnedTile.name = $"Tile {x} {y}";
                                 //spawnedTile.transform.parent = gameObject.transform;
                                 tiles[(x, y)] = spawnedTile;
+                                if ((x == -14 && y == -8) || (x == -14 && y == -7) || (x == -14 && y == 20) || (x == -14 && y == 19) || (x == 14 && y == -8) || (x == 16 && y == -7) || (x == 14 && y == 20) || (x == 16 && y == 19))
+                                {
+                                    spawnedTile.setSetExternalServerRpc();
+                                }
                             }
                         }
                         else
                         {
-                            spawnedTile = Instantiate(_tilePrefab, new Vector3(x - 1.5f, y - i / 2 - 0.5f, -1), Quaternion.identity);
+                            spawnedTile = Instantiate(_tilePrefab, new Vector3(x - 1.5f, y - i / 2 - 0.5f, -.5f), Quaternion.identity);
                             spawnedTile.GetComponent<NetworkObject>().Spawn();
                             spawnedTile.name = $"Tile {x} {y}";
                             //spawnedTile.transform.parent = gameObject.transform;
                             tiles[(x, y)] = spawnedTile;
+                            if ((x == -14 && y == -8) || (x == -14 && y == -7) || (x == -14 && y == 20) || (x == -14 && y == 19) || (x == 14 && y == -8) || (x == 16 && y == -7) || (x == 14 && y == 20) || (x == 16 && y == 19))
+                            {
+                                spawnedTile.setSetExternalServerRpc();
+                            }
                         }
                         i++;
                     }

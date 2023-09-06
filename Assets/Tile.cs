@@ -9,7 +9,7 @@ namespace TTD
     public class Tile : NetworkBehaviour
     {
         public Tile above, upR, downR, below, downL, upL; // 1 2 3 4 5 6. 1->3->6->4->5->2->1  
-        NetworkVariable<bool> set = new NetworkVariable<bool>();
+        public NetworkVariable<bool> set = new NetworkVariable<bool>();
 
         [Range(0, 3)] // 0 plain, 1 treasure, 2 monster, 3 pitfall
         static private NetworkVariable<int> type = new NetworkVariable<int>();
@@ -20,7 +20,7 @@ namespace TTD
         [Range(0, 5)]
         static NetworkVariable<int> rotation = new NetworkVariable<int>();
         static Tile tileBase;
-
+        tilegrid playerObject;
         Dictionary<(int, int), (int, int, int, int)> tilesPositions = new Dictionary<(int, int), (int, int, int, int)>()
             {
                 {(0,0), (1,1,0,0)},{(0,1), (1,3,0,0)},{(0,2), (1,2,0,0)},
@@ -34,12 +34,13 @@ namespace TTD
         void Start()
         {
             tileBase = this;
-            setColor.Value = Color.white;
+            if (NetworkManager.Singleton.IsServer) setColor.Value = Color.white;
             renderer = GetComponent<SpriteRenderer>();
             set.Value = false;
             type.Value = 0;
             shape.Value = 0;
             rotation.Value = 0;
+            if (NetworkManager.Singleton.IsClient) playerObject = NetworkManager.Singleton.SpawnManager.GetLocalPlayerObject().GetComponent<tilegrid>();
         }
 
         void FixedUpdate()
@@ -50,7 +51,17 @@ namespace TTD
             }
             renderer.color = setColor.Value;
         }
-
+        [ServerRpc(RequireOwnership = false)]
+        public void setSetExternalServerRpc()
+        {
+            StartCoroutine(starterSet());
+        }
+        IEnumerator starterSet()
+        {
+            yield return new WaitForSeconds(.5f);
+            this.set.Value = true;
+            this.setColor.Value = Color.yellow;
+        }
         [ServerRpc(RequireOwnership = false)]
         void rotateServerRpc()
         {
@@ -63,10 +74,13 @@ namespace TTD
 
         void Update()
         {
-            if (Input.GetKeyDown("r") && mouseOver)
+            if (NetworkManager.Singleton.IsClient)
             {
-                checkProcServerRpc(1);
-                rotateServerRpc();
+                if (Input.GetKeyDown("r") && mouseOver && playerObject.myTurn)
+                {
+                    checkProcServerRpc(1, NetworkManager.Singleton.LocalClientId);
+                    rotateServerRpc();
+                }
             }
         }
 
@@ -107,7 +121,7 @@ namespace TTD
             Tile.shape.Value = shape;
         }
 
-        [ServerRpc]
+        [ServerRpc(RequireOwnership = false)]
         public void setTSServerRpc(int t, int s)
         {
             Tile.type.Value = t;
@@ -118,11 +132,23 @@ namespace TTD
             Tile.tileBase.setTSServerRpc(t, s);
         }
 
-        bool checkTiles(int[] ints, Tile tile, int rotation)
+        public int radialSetCheck()
+        {
+            int num = 0;
+            if (this.above != null) if (this.above.set.Value) num++;
+            if (this.upR != null) if (this.upR.set.Value) num++;
+            if (this.downR != null) if (this.downR.set.Value) num++;
+            if (this.below != null) if (this.below.set.Value) num++;
+            if (this.downL != null) if (this.downL.set.Value) num++;
+            if (this.upL != null) if (this.upL.set.Value) num++;
+            return num;
+        }
+
+        (bool, int) checkTiles(int[] ints, Tile tile, int rotation)
         {
             if (ints.Length == 0 || tile == null)
             {
-                return !tile.set.Value;
+                return (!tile.set.Value, tile.radialSetCheck());
             }
             else
             {
@@ -133,47 +159,49 @@ namespace TTD
                 }
                 Tile tempTile = null;
 
-                if (ints[0] == 0) return !tile.set.Value;
+                if (ints[0] == 0) return (!tile.set.Value, tile.radialSetCheck());
                 switch ((ints[0] + rotation) % 6)
                 {
                     case 1:
-                        if (tile.above == null) return false;
+                        if (tile.above == null) return (false, 0);
                         tempTile = tile.above;
                         break;
                     case 2:
-                        if (tile.upR == null) return false;
+                        if (tile.upR == null) return (false, 0);
                         tempTile = tile.upR;
                         break;
                     case 3:
-                        if (tile.downR == null) return false;
+                        if (tile.downR == null) return (false, 0);
                         tempTile = tile.downR;
                         break;
                     case 4:
-                        if (tile.below == null) return false;
+                        if (tile.below == null) return (false, 0);
                         tempTile = tile.below;
                         break;
                     case 5:
-                        if (tile.downL == null) return false;
+                        if (tile.downL == null) return (false, 0);
                         tempTile = tile.downL;
                         break;
                     case 0:
-                        if (tile.upL == null) return false;
+                        if (tile.upL == null) return (false, 0);
                         tempTile = tile.upL;
                         break;
                 }
-                return checkTiles(temp, tempTile, rotation) && !tile.set.Value;
+                (bool, int) result = checkTiles(temp, tempTile, rotation);
+                return (result.Item1 && !tile.set.Value, tile.radialSetCheck() + result.Item2);
             }
         }
 
         [ServerRpc(RequireOwnership = false)]
-        void checkProcServerRpc(int EED)
+        void checkProcServerRpc(int EED, ulong ID)
         {
             if (EED == 0)
             { // OO
                 if (!set.Value)
                 {
                     (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                    if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
+                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                    if (result.Item1 && result.Item2 > 1)
                     {
                         colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
                     }
@@ -184,9 +212,11 @@ namespace TTD
                 if (!set.Value)
                 {
                     (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                    if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
+                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                    if (result.Item1 && result.Item2 > 1)
                     {
                         setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                        NetworkManager.Singleton.ConnectedClients[ID].PlayerObject.GetComponent<tilegrid>().EndTurn();
                     }
                 }
             }
@@ -195,28 +225,45 @@ namespace TTD
                 if (!set.Value)
                 {
                     (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                    if (checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value))
+                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                    if (result.Item1 && result.Item2 > 1)
                     {
                         colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
                     }
                 }
             }
+
         }
 
         void OnMouseOver()
         {
-            mouseOver = true;
-            checkProcServerRpc(0);
+            if (NetworkManager.Singleton.IsClient)
+            {
+                if (playerObject.myTurn)
+                {
+                    mouseOver = true;
+                    checkProcServerRpc(0, NetworkManager.Singleton.LocalClientId);
+                }
+            }
         }
         void OnMouseExit()
         {
-            mouseOver = false;
-            checkProcServerRpc(1);
+            if (NetworkManager.Singleton.IsClient)
+            {
+                if (playerObject.myTurn)
+                {
+                    mouseOver = false;
+                    checkProcServerRpc(1, NetworkManager.Singleton.LocalClientId);
+                }
+            }
         }
 
         void OnMouseDown()
         {
-            checkProcServerRpc(2);
+            if (NetworkManager.Singleton.IsClient)
+            {
+                checkProcServerRpc(2, NetworkManager.Singleton.LocalClientId);
+            }
         }
 
         [ClientRpc]

@@ -10,6 +10,7 @@ namespace TTD
         [SerializeField]
         Sprite[] sprite;
         public int cardtype;
+        public static Card lastCard;
         void Start()
         {
             GetComponent<SpriteRenderer>().sprite = sprite[cardtype];
@@ -68,6 +69,9 @@ namespace TTD
                     break;
             }
             Tile.setTS(t, s);
+            if (lastCard != null) lastCard.gameObject.SetActive(true);
+            lastCard = this;
+            gameObject.SetActive(false);
         }
     }
 }

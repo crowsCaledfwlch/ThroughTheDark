@@ -1,7 +1,7 @@
 using Unity.Netcode;
 using UnityEngine;
 
-namespace HelloWorld
+namespace TTD
 {
     public class HelloWorldPlayer : NetworkBehaviour
     {
