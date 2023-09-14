@@ -10,6 +10,7 @@ namespace TTD
     {
         public Tile above, upR, downR, below, downL, upL; // 1 2 3 4 5 6. 1->3->6->4->5->2->1  
         public NetworkVariable<bool> set = new NetworkVariable<bool>();
+        public NetworkVariable<bool> win = new NetworkVariable<bool>();
 
         [Range(0, 3)] // 0 plain, 1 treasure, 2 monster, 3 pitfall
         static private NetworkVariable<int> type = new NetworkVariable<int>();
@@ -28,15 +29,16 @@ namespace TTD
                 {(2,0), (6,1,2,0)},{(2,1), (1,1,3,0)},{(2,2), (1,1,1,0)},
                 {(3,0), (6,1,1,2)}
             };
-        private SpriteRenderer renderer;
+        private SpriteRenderer spriteRenderer;
         private NetworkVariable<Color> setColor = new NetworkVariable<Color>();
         bool mouseOver = false;
         void Start()
         {
             tileBase = this;
             if (NetworkManager.Singleton.IsServer) setColor.Value = Color.white;
-            renderer = GetComponent<SpriteRenderer>();
+            spriteRenderer = GetComponent<SpriteRenderer>();
             set.Value = false;
+            win.Value = false;
             type.Value = 0;
             shape.Value = 0;
             rotation.Value = 0;
@@ -45,11 +47,16 @@ namespace TTD
 
         void FixedUpdate()
         {
-            if (renderer == null)
+            if (spriteRenderer == null)
             {
-                renderer = GetComponent<SpriteRenderer>();
+                spriteRenderer = GetComponent<SpriteRenderer>();
             }
-            renderer.color = setColor.Value;
+            spriteRenderer.color = setColor.Value;
+        }
+        [ClientRpc]
+        public void setSetClientRpc()
+        {
+            setSetExternalServerRpc();
         }
         [ServerRpc(RequireOwnership = false)]
         public void setSetExternalServerRpc()
@@ -59,8 +66,24 @@ namespace TTD
         IEnumerator starterSet()
         {
             yield return new WaitForSeconds(.5f);
-            this.set.Value = true;
             this.setColor.Value = Color.yellow;
+            this.set.Value = true;
+        }
+        [ClientRpc]
+        public void setWinClientRpc()
+        {
+            setWinExternalServerRpc();
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void setWinExternalServerRpc()
+        {
+            StartCoroutine(starterWin());
+        }
+        IEnumerator starterWin()
+        {
+            yield return new WaitForSeconds(.5f);
+            this.setColor.Value = Color.green;
+            this.win.Value = true;
         }
         [ServerRpc(RequireOwnership = false)]
         void rotateServerRpc()
@@ -84,7 +107,7 @@ namespace TTD
             }
         }
 
-        SpriteRenderer GetSpriteRenderer() => renderer;
+        SpriteRenderer GetSpriteRenderer() => spriteRenderer;
 
         public void setAbove(Tile tile)
         {
@@ -143,12 +166,28 @@ namespace TTD
             if (this.upL != null) if (this.upL.set.Value) num++;
             return num;
         }
+        public bool radialWinCheck()
+        {
+            bool r = false;
+            if (this.above != null) if (this.above.win.Value) r = true;
+            if (this.upR != null) if (this.upR.win.Value) r = true;
+            if (this.downR != null) if (this.downR.win.Value) r = true;
+            if (this.below != null) if (this.below.win.Value) r = true;
+            if (this.downL != null) if (this.downL.win.Value) r = true;
+            if (this.upL != null) if (this.upL.win.Value) r = true;
+            return r;
+        }
+
+        public bool setOrWin()
+        {
+            return this.set.Value || this.win.Value;
+        }
 
         (bool, int) checkTiles(int[] ints, Tile tile, int rotation)
         {
             if (ints.Length == 0 || tile == null)
             {
-                return (!tile.set.Value, tile.radialSetCheck());
+                return (!tile.setOrWin(), tile.radialSetCheck());
             }
             else
             {
@@ -159,7 +198,7 @@ namespace TTD
                 }
                 Tile tempTile = null;
 
-                if (ints[0] == 0) return (!tile.set.Value, tile.radialSetCheck());
+                if (ints[0] == 0) return (!tile.setOrWin(), tile.radialSetCheck());
                 switch ((ints[0] + rotation) % 6)
                 {
                     case 1:
@@ -188,7 +227,55 @@ namespace TTD
                         break;
                 }
                 (bool, int) result = checkTiles(temp, tempTile, rotation);
-                return (result.Item1 && !tile.set.Value, tile.radialSetCheck() + result.Item2);
+                return (result.Item1 && !tile.setOrWin(), tile.radialSetCheck() + result.Item2);
+            }
+        }
+
+        (bool, int, bool) checkTiles(int[] ints, Tile tile, int rotation, ulong ID)
+        {
+            if (ints.Length == 0 || tile == null)
+            {
+                return (!tile.setOrWin(), tile.radialSetCheck(), tile.radialWinCheck());
+            }
+            else
+            {
+                int[] temp = new int[ints.Length - 1];
+                for (int i = 1; i < ints.Length; i++)
+                {
+                    temp[i - 1] = ints[i];
+                }
+                Tile tempTile = null;
+
+                if (ints[0] == 0) return (!tile.setOrWin(), tile.radialSetCheck(), tile.radialWinCheck());
+                switch ((ints[0] + rotation) % 6)
+                {
+                    case 1:
+                        if (tile.above == null) return (false, 0, false);
+                        tempTile = tile.above;
+                        break;
+                    case 2:
+                        if (tile.upR == null) return (false, 0, false);
+                        tempTile = tile.upR;
+                        break;
+                    case 3:
+                        if (tile.downR == null) return (false, 0, false);
+                        tempTile = tile.downR;
+                        break;
+                    case 4:
+                        if (tile.below == null) return (false, 0, false);
+                        tempTile = tile.below;
+                        break;
+                    case 5:
+                        if (tile.downL == null) return (false, 0, false);
+                        tempTile = tile.downL;
+                        break;
+                    case 0:
+                        if (tile.upL == null) return (false, 0, false);
+                        tempTile = tile.upL;
+                        break;
+                }
+                (bool, int, bool) result = checkTiles(temp, tempTile, rotation, ID);
+                return (result.Item1 && !tile.setOrWin(), tile.radialSetCheck() + result.Item2, tile.radialWinCheck() || result.Item3);
             }
         }
 
@@ -197,7 +284,7 @@ namespace TTD
         {
             if (EED == 0)
             { // OO
-                if (!set.Value)
+                if (!set.Value && type.Value != -1)
                 {
                     (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
                     (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
@@ -209,20 +296,32 @@ namespace TTD
             }
             else if (EED == 2)
             { // OMD
-                if (!set.Value)
+                if (!set.Value && type.Value != -1)
                 {
                     (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                    (bool, int, bool) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value, ID);
                     if (result.Item1 && result.Item2 > 1)
                     {
-                        setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
-                        NetworkManager.Singleton.ConnectedClients[ID].PlayerObject.GetComponent<tilegrid>().EndTurn();
+                        if (type.Value != 3 || !result.Item3)
+                        {
+                            setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                            tilegrid tgrid = NetworkManager.Singleton.ConnectedClients[ID].PlayerObject.GetComponent<tilegrid>();
+                            if (result.Item3 && type.Value != 3)
+                            {
+                                tgrid.WinGameClientRpc();
+                            }
+                            else
+                            {
+                                tgrid.EndTurnClientRpc();
+                            }
+                            type.Value = -1;
+                        }
                     }
                 }
             }
             else
             { // OMEx and catch
-                if (!set.Value)
+                if (!set.Value && type.Value != -1)
                 {
                     (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
                     (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);

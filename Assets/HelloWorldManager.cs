@@ -51,7 +51,7 @@ namespace TTD
                 {
                     var playerObject = NetworkManager.Singleton.SpawnManager.GetLocalPlayerObject();
                     var player = playerObject.GetComponent<tilegrid>();
-                    player.EndTurn();
+                    player.EndTurnClientRpc();
                 }
             }
         }

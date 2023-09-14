@@ -11,10 +11,26 @@ namespace TTD
         Sprite[] sprite;
         public int cardtype;
         public static Card lastCard;
+        public bool used = false;
+        public bool activeCard = false;
         void Start()
         {
+            setCardType(cardtype);
+        }
+
+        public void useCard()
+        {
+            used = true;
+            activeCard = false;
+            transform.position = new Vector3(transform.position.x, -10, transform.position.z);
+        }
+
+        public void setCardType(int cardtype)
+        {
+            this.cardtype = cardtype;
             GetComponent<SpriteRenderer>().sprite = sprite[cardtype];
         }
+
         void OnMouseOver()
         {
             if (transform.position.y < -7)
@@ -69,8 +85,16 @@ namespace TTD
                     break;
             }
             Tile.setTS(t, s);
-            if (lastCard != null) lastCard.gameObject.SetActive(true);
+            if (lastCard != null)
+            {
+                if (lastCard.used != true)
+                {
+                    lastCard.gameObject.SetActive(true);
+                    lastCard.activeCard = false;
+                }
+            }
             lastCard = this;
+            activeCard = true;
             gameObject.SetActive(false);
         }
     }

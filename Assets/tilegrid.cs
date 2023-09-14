@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
+using TMPro;
 using System;
 
 namespace TTD
@@ -11,8 +12,9 @@ namespace TTD
         [SerializeField] private Tile _tilePrefab;
         [SerializeField] private int _width;
         [SerializeField] private int _height;
+        [SerializeField] private TMP_Text textBox;
         [SerializeField]
-        private Card[] cardPieces;
+        public Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
         Dictionary<int, int> amountOfTiles = new Dictionary<int, int>() { { 0, 3 }, { 1, 3 }, { 2, 3 }, { 3, 15 }, { 4, 15 }, { 5, 15 }, { 6, 8 }, { 7, 8 } };
         bool generated = false;
@@ -20,9 +22,59 @@ namespace TTD
         NetworkList<int> cardPile = new NetworkList<int>();
         NetworkList<ulong> players = new NetworkList<ulong>();
         public bool myTurn;
-        public void EndTurn()
+        [ClientRpc]
+        public void WinGameClientRpc()
         {
+            EndGameServerRpc(players.IndexOf(NetworkManager.Singleton.LocalClientId));
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void EndGameServerRpc(int indexOfWinner)
+        {
+            SendEndClientRpc($"Player {indexOfWinner + 1} wins!");
+        }
+        [ClientRpc]
+        public void SendEndClientRpc(string winMessage)
+        {
+            textBox.text = winMessage;
+        }
+        [ClientRpc]
+        public void EndTurnClientRpc()
+        {
+            foreach (Card card in cardPieces)
+            {
+                if (card.activeCard)
+                {
+                    card.useCard();
+                }
+            }
             myTurn = false;
+            int activeCards = 0;
+            int i = 0;
+            System.Random random = new System.Random();
+            while (activeCards < 5)
+            {
+                if (!cardPieces[i].used)
+                {
+                    activeCards++;
+                }
+                else
+                {
+                    if (cardPile.Count != 0)
+                    {
+                        int key = random.Next(0, cardPile.Count);
+                        cardPieces[i].gameObject.SetActive(true);
+                        cardPieces[i].setCardType(cardPile[key]);
+                        cardPieces[i].used = false;
+                        RemoveFromPileServerRpc(cardPile[key]);
+                        activeCards++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                i++;
+            }
             setNextTurnServerRpc(players.IndexOf(NetworkManager.Singleton.LocalClientId) + 1 % players.Count);
         }
         IEnumerator drawstartinghand()
@@ -44,18 +96,24 @@ namespace TTD
         }
         public override void OnNetworkSpawn()
         {
+            base.OnNetworkSpawn();
             if (players.Count == 0)
             {
                 myTurn = true;
             }
             GenerateGridServerRpc(NetworkManager.Singleton.LocalClientId);
-            StartCoroutine(drawstartinghand());
+            if (IsOwner) StartCoroutine(drawstartinghand());
         }
 
         [ServerRpc(RequireOwnership = false)]
         void setNextTurnServerRpc(int ID)
         {
-            NetworkManager.Singleton.ConnectedClients[players[ID]].PlayerObject.GetComponent<tilegrid>().myTurn = true;
+            NetworkManager.Singleton.ConnectedClients[players[ID]].PlayerObject.GetComponent<tilegrid>().setTurnOnClientRpc();
+        }
+        [ClientRpc]
+        void setTurnOnClientRpc()
+        {
+            myTurn = true;
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -63,6 +121,7 @@ namespace TTD
         {
             cardPile.Remove(cardNum);
         }
+
 
         [ServerRpc(RequireOwnership = false)]
         void GenerateGridServerRpc(ulong ID)
@@ -91,26 +150,34 @@ namespace TTD
                             if (x < _width)
                             {
                                 spawnedTile = Instantiate(_tilePrefab, new Vector3(x - .5f, y - i / 2, -.5f), Quaternion.identity);
-                                spawnedTile.GetComponent<NetworkObject>().Spawn();
                                 spawnedTile.name = $"Tile {x} {y}";
                                 //spawnedTile.transform.parent = gameObject.transform;
                                 tiles[(x, y)] = spawnedTile;
+                                spawnedTile.GetComponent<NetworkObject>().Spawn();
                                 if ((x == -14 && y == -8) || (x == -14 && y == -7) || (x == -14 && y == 20) || (x == -14 && y == 19) || (x == 14 && y == -8) || (x == 16 && y == -7) || (x == 14 && y == 20) || (x == 16 && y == 19))
                                 {
-                                    spawnedTile.setSetExternalServerRpc();
+                                    spawnedTile.setSetClientRpc();
+                                }
+                                else if (x == 0 && y == 6)
+                                {
+                                    spawnedTile.setWinClientRpc();
                                 }
                             }
                         }
                         else
                         {
                             spawnedTile = Instantiate(_tilePrefab, new Vector3(x - 1.5f, y - i / 2 - 0.5f, -.5f), Quaternion.identity);
-                            spawnedTile.GetComponent<NetworkObject>().Spawn();
                             spawnedTile.name = $"Tile {x} {y}";
                             //spawnedTile.transform.parent = gameObject.transform;
                             tiles[(x, y)] = spawnedTile;
+                            spawnedTile.GetComponent<NetworkObject>().Spawn();
                             if ((x == -14 && y == -8) || (x == -14 && y == -7) || (x == -14 && y == 20) || (x == -14 && y == 19) || (x == 14 && y == -8) || (x == 16 && y == -7) || (x == 14 && y == 20) || (x == 16 && y == 19))
                             {
-                                spawnedTile.setSetExternalServerRpc();
+                                spawnedTile.setSetClientRpc();
+                            }
+                            else if (x == 0 && y == 6)
+                            {
+                                spawnedTile.setWinClientRpc();
                             }
                         }
                         i++;
@@ -175,12 +242,6 @@ namespace TTD
                 }
                 generated = true;
             }
-
-        }
-
-        // Update is called once per frame
-        void Update()
-        {
 
         }
     }
