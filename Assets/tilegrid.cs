@@ -13,8 +13,7 @@ namespace TTD
         [SerializeField] private int _width;
         [SerializeField] private int _height;
         [SerializeField] private TMP_Text textBox;
-        [SerializeField]
-        public Card[] cardPieces;
+        [SerializeField] public Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
         Dictionary<int, int> amountOfTiles = new Dictionary<int, int>() { { 0, 3 }, { 1, 3 }, { 2, 3 }, { 3, 15 }, { 4, 15 }, { 5, 15 }, { 6, 8 }, { 7, 8 } };
         bool generated = false;

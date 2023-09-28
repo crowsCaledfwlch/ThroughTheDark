@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -35,28 +36,43 @@ namespace TTD
         void Start()
         {
             tileBase = this;
-            if (NetworkManager.Singleton.IsServer) setColor.Value = Color.white;
-            spriteRenderer = GetComponent<SpriteRenderer>();
-            set.Value = false;
-            win.Value = false;
-            type.Value = 0;
-            shape.Value = 0;
-            rotation.Value = 0;
+            if (NetworkManager.Singleton.IsServer)
+            {
+                setColor.Value = Color.white;
+                spriteRenderer = GetComponent<SpriteRenderer>();
+                set.Value = false;
+                win.Value = false;
+                type.Value = 0;
+                shape.Value = 0;
+                rotation.Value = 0;
+            }
             if (NetworkManager.Singleton.IsClient) playerObject = NetworkManager.Singleton.SpawnManager.GetLocalPlayerObject().GetComponent<tilegrid>();
         }
 
         void FixedUpdate()
         {
+
             if (spriteRenderer == null)
             {
                 spriteRenderer = GetComponent<SpriteRenderer>();
             }
-            spriteRenderer.color = setColor.Value;
+            if (spriteRenderer.color != setColor.Value) spriteRenderer.color = setColor.Value;
         }
         [ClientRpc]
         public void setSetClientRpc()
         {
             setSetExternalServerRpc();
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void setInternalServerRpc()
+        {
+            this.set.Value = true;
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        public void setColorServerRpc(Color color)
+        {
+            this.setColor.Value = color;
         }
         [ServerRpc(RequireOwnership = false)]
         public void setSetExternalServerRpc()
@@ -302,8 +318,11 @@ namespace TTD
                     (bool, int, bool) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value, ID);
                     if (result.Item1 && result.Item2 > 1)
                     {
+
                         if (type.Value != 3 || !result.Item3)
                         {
+
+                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
                             setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
                             tilegrid tgrid = NetworkManager.Singleton.ConnectedClients[ID].PlayerObject.GetComponent<tilegrid>();
                             if (result.Item3 && type.Value != 3)
@@ -365,33 +384,33 @@ namespace TTD
             }
         }
 
-        [ClientRpc]
-        void colorTilesClientRpc(int[] ints, int type, int rotation)
-        {
-            colorTilesServerRpc(ints, type, rotation);
-        }
-
         [ServerRpc(RequireOwnership = false)]
         void colorTilesServerRpc(int[] ints, int type, int rotation)
+        {
+            colorTilesClientRpc(ints, type, rotation);
+        }
+
+        [ClientRpc]
+        void colorTilesClientRpc(int[] ints, int type, int rotation)
         {
             if (ints.Length == 0)
             {
                 switch (type)
                 {
                     case -1:
-                        this.setColor.Value = Color.white;
+                        setColorServerRpc(Color.white);
                         break;
                     case 0:
-                        this.setColor.Value = Color.yellow;
+                        setColorServerRpc(Color.yellow);
                         break;
                     case 1:
-                        this.setColor.Value = Color.blue;
+                        setColorServerRpc(Color.blue);
                         break;
                     case 2:
-                        this.setColor.Value = Color.red;
+                        setColorServerRpc(Color.red);
                         break;
                     case 3:
-                        this.setColor.Value = Color.black;
+                        setColorServerRpc(Color.black);
                         break;
                 }
             }
@@ -407,67 +426,78 @@ namespace TTD
                 switch (type)
                 {
                     case -1:
-                        this.setColor.Value = Color.white;
+                        setColorServerRpc(Color.white);
                         break;
                     case 0:
-                        this.setColor.Value = Color.yellow;
+                        setColorServerRpc(Color.yellow);
                         break;
                     case 1:
-                        this.setColor.Value = Color.blue;
+                        setColorServerRpc(Color.blue);
                         break;
                     case 2:
-                        this.setColor.Value = Color.red;
+                        setColorServerRpc(Color.red);
                         break;
                     case 3:
-                        this.setColor.Value = Color.black;
+                        setColorServerRpc(Color.black);
                         break;
                 }
+                if (spriteRenderer == null)
+                {
+                    spriteRenderer = GetComponent<SpriteRenderer>();
+                }
+                spriteRenderer.color = setColor.Value;
 
                 if (ints[0] == 0) return;
-                switch ((ints[0] + rotation) % 6)
+                try
                 {
-                    case 1:
-                        tempTile = this.above;
-                        break;
-                    case 2:
-                        tempTile = this.upR;
-                        break;
-                    case 3:
-                        tempTile = this.downR;
-                        break;
-                    case 4:
-                        tempTile = this.below;
-                        break;
-                    case 5:
-                        tempTile = this.downL;
-                        break;
-                    case 0:
-                        tempTile = this.upL;
-                        break;
+                    switch ((ints[0] + rotation) % 6)
+                    {
+                        case 1:
+                            tempTile = this.above;
+                            break;
+                        case 2:
+                            tempTile = this.upR;
+                            break;
+                        case 3:
+                            tempTile = this.downR;
+                            break;
+                        case 4:
+                            tempTile = this.below;
+                            break;
+                        case 5:
+                            tempTile = this.downL;
+                            break;
+                        case 0:
+                            tempTile = this.upL;
+                            break;
+                    }
+                    tempTile.colorTilesClientRpc(temp, type, rotation);
                 }
+                catch (Exception e)
+                {
 
-                tempTile.colorTilesClientRpc(temp, type, rotation);
+                }
             }
         }
 
-
-        [ClientRpc]
-        void setTrueClientRpc(int[] ints, int type, int rotation)
-        {
-            setTrueServerRpc(ints, type, rotation);
-        }
 
         [ServerRpc(RequireOwnership = false)]
         void setTrueServerRpc(int[] ints, int type, int rotation)
         {
+            setTrueClientRpc(ints, type, rotation);
+        }
+
+        [ClientRpc]
+        void setTrueClientRpc(int[] ints, int type, int rotation)
+        {
 
             if (ints.Length == 0)
             {
-                this.set.Value = true;
+                setInternalServerRpc();
             }
             else
             {
-                this.set.Value = true;
+                setInternalServerRpc();
                 int[] temp = new int[ints.Length - 1];
                 for (int i = 1; i < ints.Length; i++)
                 {
@@ -475,28 +505,35 @@ namespace TTD
                 }
                 Tile tempTile = null;
                 if (ints[0] == 0) return;
-                switch ((ints[0] + rotation) % 6)
+                try
                 {
-                    case 1:
-                        tempTile = this.above;
-                        break;
-                    case 2:
-                        tempTile = this.upR;
-                        break;
-                    case 3:
-                        tempTile = this.downR;
-                        break;
-                    case 4:
-                        tempTile = this.below;
-                        break;
-                    case 5:
-                        tempTile = this.downL;
-                        break;
-                    case 0:
-                        tempTile = this.upL;
-                        break;
+                    switch ((ints[0] + rotation) % 6)
+                    {
+                        case 1:
+                            tempTile = this.above;
+                            break;
+                        case 2:
+                            tempTile = this.upR;
+                            break;
+                        case 3:
+                            tempTile = this.downR;
+                            break;
+                        case 4:
+                            tempTile = this.below;
+                            break;
+                        case 5:
+                            tempTile = this.downL;
+                            break;
+                        case 0:
+                            tempTile = this.upL;
+                            break;
+                    }
+                    tempTile.setTrueClientRpc(temp, type, rotation);
                 }
-                tempTile.setTrueClientRpc(temp, type, rotation);
+                catch (Exception e)
+                {
+
+                }
             }
         }
     }
