@@ -16,15 +16,32 @@ namespace TTD
         [SerializeField] public Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
         Dictionary<int, int> amountOfTiles = new Dictionary<int, int>() { { 0, 3 }, { 1, 3 }, { 2, 3 }, { 3, 15 }, { 4, 15 }, { 5, 15 }, { 6, 8 }, { 7, 8 } };
-        bool generated = false;
+        static NetworkVariable<bool> generated = new NetworkVariable<bool>();
+
+        public static NetworkList<int> cardPile = new NetworkList<int>();
+        public static NetworkList<ulong> players = new NetworkList<ulong>();
         List<int> cards = new List<int>();
-        NetworkList<int> cardPile = new NetworkList<int>();
-        NetworkList<ulong> players = new NetworkList<ulong>();
-        public bool myTurn;
-        [ClientRpc]
-        public void WinGameClientRpc()
+        protected NetworkVariable<bool> _myTurn = new NetworkVariable<bool>();
+        public bool myTurn
         {
-            EndGameServerRpc(players.IndexOf(NetworkManager.Singleton.LocalClientId));
+            get
+            {
+                return _myTurn.Value;
+            }
+            set
+            {
+                setMyTurnServerRpc(value);
+            }
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void setMyTurnServerRpc(bool val)
+        {
+            _myTurn.Value = val;
+        }
+        [ClientRpc]
+        public void WinGameClientRpc(int ID)
+        {
+            EndGameServerRpc(ID);
         }
         [ServerRpc(RequireOwnership = false)]
         public void EndGameServerRpc(int indexOfWinner)
@@ -78,6 +95,7 @@ namespace TTD
         }
         IEnumerator drawstartinghand()
         {
+            Debug.Log("Drawing");
             yield return new WaitForSeconds(1);
             System.Random random = new System.Random();
             for (int i = 0; i < 5; i++)
@@ -126,7 +144,31 @@ namespace TTD
         void GenerateGridServerRpc(ulong ID)
         {
             players.Add(ID);
-            if (!generated)
+            int playerx, playery;
+            switch (players.Count)
+            {
+                case 1:
+                    playerx = -14;
+                    playery = -8;
+                    break;
+                case 2:
+                    playerx = -14;
+                    playery = 20;
+                    break;
+                case 3:
+                    playerx = 14;
+                    playery = -8;
+                    break;
+                case 4:
+                    playerx = 14;
+                    playery = 20;
+                    break;
+                default:
+                    playerx = 0;
+                    playery = 0;
+                    break;
+            }
+            if (!generated.Value)
             {
                 System.Random random = new System.Random();
                 foreach (KeyValuePair<int, int> kvpair in amountOfTiles)
@@ -150,6 +192,8 @@ namespace TTD
                             {
                                 spawnedTile = Instantiate(_tilePrefab, new Vector3(x - .5f, y - i / 2, -.5f), Quaternion.identity);
                                 spawnedTile.name = $"Tile {x} {y}";
+                                spawnedTile.setXY(x, y);
+                                spawnedTile.setPUIDServerRpc(6666);
                                 //spawnedTile.transform.parent = gameObject.transform;
                                 tiles[(x, y)] = spawnedTile;
                                 spawnedTile.GetComponent<NetworkObject>().Spawn();
@@ -167,6 +211,8 @@ namespace TTD
                         {
                             spawnedTile = Instantiate(_tilePrefab, new Vector3(x - 1.5f, y - i / 2 - 0.5f, -.5f), Quaternion.identity);
                             spawnedTile.name = $"Tile {x} {y}";
+                            spawnedTile.setXY(x, y);
+                            spawnedTile.setPUIDServerRpc(6666);
                             //spawnedTile.transform.parent = gameObject.transform;
                             tiles[(x, y)] = spawnedTile;
                             spawnedTile.GetComponent<NetworkObject>().Spawn();
@@ -239,9 +285,10 @@ namespace TTD
                         }
                     }
                 }
-                generated = true;
+                generated.Value = true;
             }
-
+            Tile tile = GameObject.Find($"Tile {playerx} {playery}").GetComponent<Tile>();
+            tile.setPUIDServerRpc(ID);
         }
     }
 }

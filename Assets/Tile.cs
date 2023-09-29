@@ -9,7 +9,9 @@ namespace TTD
 {
     public class Tile : NetworkBehaviour
     {
-        public Tile above, upR, downR, below, downL, upL; // 1 2 3 4 5 6. 1->3->6->4->5->2->1  
+        public Tile above, upR, downR, below, downL, upL; // 1 2 3 4 5 6. 1->3->6->4->5->2->1
+        private int x, y;
+        [SerializeField] private NetworkVariable<ulong> uidOnTile = new NetworkVariable<ulong>();
         public NetworkVariable<bool> set = new NetworkVariable<bool>();
         public NetworkVariable<bool> win = new NetworkVariable<bool>();
 
@@ -57,6 +59,29 @@ namespace TTD
                 spriteRenderer = GetComponent<SpriteRenderer>();
             }
             if (spriteRenderer.color != setColor.Value) spriteRenderer.color = setColor.Value;
+            if (uidOnTile.Value != 666) { spriteRenderer.color = Color.magenta; }
+        }
+        public void setXY(int x, int y)
+        {
+            this.x = x;
+            this.y = y;
+        }
+        [ClientRpc]
+        public void setPUIDClientRpc(ulong uid)
+        {
+            setPUIDServerRpc(uid);
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void setPUIDServerRpc(ulong uid)
+        {
+            if (this.uidOnTile.Value != 666 && uid == 6666)
+            {
+                this.uidOnTile.Value = 666;
+            }
+            else if (uid != 6666)
+            {
+                this.uidOnTile.Value = uid;
+            }
         }
         [ClientRpc]
         public void setSetClientRpc()
@@ -119,6 +144,10 @@ namespace TTD
                 {
                     checkProcServerRpc(1, NetworkManager.Singleton.LocalClientId);
                     rotateServerRpc();
+                }
+                if (Input.GetMouseButton(1) && mouseOver && playerObject.myTurn)
+                {
+                    checkProcServerRpc(3, NetworkManager.Singleton.LocalClientId);
                 }
             }
         }
@@ -298,59 +327,67 @@ namespace TTD
         [ServerRpc(RequireOwnership = false)]
         void checkProcServerRpc(int EED, ulong ID)
         {
-            if (EED == 0)
-            { // OO
-                if (!set.Value && type.Value != -1)
-                {
-                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
-                    if (result.Item1 && result.Item2 > 1)
+            tilegrid tgrid = NetworkManager.Singleton.ConnectedClients[ID].PlayerObject.GetComponent<tilegrid>();
+            if (tgrid.myTurn)
+            {
+                if (EED == 0)
+                { // OO
+                    if (!set.Value && type.Value != -1)
                     {
-                        colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                        (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
+                        (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                        if (result.Item1 && result.Item2 > 1)
+                        {
+                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                        }
                     }
                 }
-            }
-            else if (EED == 2)
-            { // OMD
-                if (!set.Value && type.Value != -1)
-                {
-                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                    (bool, int, bool) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value, ID);
-                    if (result.Item1 && result.Item2 > 1)
+                else if (EED == 2)
+                { // OMD
+                    if (!set.Value && type.Value != -1)
                     {
-
-                        if (type.Value != 3 || !result.Item3)
+                        (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
+                        (bool, int, bool) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value, ID);
+                        if (result.Item1 && result.Item2 > 1)
                         {
 
-                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
-                            setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
-                            tilegrid tgrid = NetworkManager.Singleton.ConnectedClients[ID].PlayerObject.GetComponent<tilegrid>();
-                            if (result.Item3 && type.Value != 3)
+                            if (type.Value != 3 || !result.Item3)
                             {
-                                tgrid.WinGameClientRpc();
-                            }
-                            else
-                            {
+
+                                colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                                setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
                                 tgrid.EndTurnClientRpc();
+                                type.Value = -1;
                             }
-                            type.Value = -1;
+                        }
+                    }
+                }
+                else if (EED == 3)
+                {
+                    (ulong, bool, Tile) result = getPath(0);
+                    if (result.Item2)
+                    {
+                        result.Item3.setPUIDServerRpc(666);
+                        setPUIDServerRpc(ID);
+                        if (win.Value == true)
+                        {
+                            tgrid.WinGameClientRpc((int)ID);
+                        }
+                    }
+                }
+                else
+                { // OMEx and catch
+                    if (!set.Value && type.Value != -1)
+                    {
+                        (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
+                        (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                        if (result.Item1 && result.Item2 > 1)
+                        {
+                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
                         }
                     }
                 }
             }
-            else
-            { // OMEx and catch
-                if (!set.Value && type.Value != -1)
-                {
-                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
-                    if (result.Item1 && result.Item2 > 1)
-                    {
-                        colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
-                    }
-                }
-            }
-
         }
 
         void OnMouseOver()
@@ -535,6 +572,84 @@ namespace TTD
 
                 }
             }
+        }
+        public (ulong, bool, Tile) getPath(int steps)
+        {
+            (ulong, bool, Tile) result = (this.uidOnTile.Value, false, this);
+            if (steps < 3)
+            {
+                if (set.Value || win.Value)
+                {
+                    if (uidOnTile.Value != 666)
+                    {
+                        result.Item1 = this.uidOnTile.Value;
+                        result.Item2 = true;
+                        result.Item3 = this;
+                    }
+                    else
+                    {
+                        if (this.above != null)
+                        {
+                            result.Item2 = result.Item2 || this.above.getPath(steps + 1).Item2;
+                            if (this.above.getPath(steps + 1).Item2)
+                            {
+                                result.Item1 = this.uidOnTile.Value;
+                                result.Item3 = this.above.getPath(steps + 1).Item3;
+                            }
+                        }
+                        if (this.downR != null)
+                        {
+                            result.Item2 = result.Item2 || this.downR.getPath(steps + 1).Item2;
+                            if (this.downR.getPath(steps + 1).Item2)
+                            {
+                                result.Item1 = this.uidOnTile.Value;
+                                result.Item3 = this.downR.getPath(steps + 1).Item3;
+                            }
+                        }
+                        if (this.downL != null)
+                        {
+                            result.Item2 = result.Item2 || this.downL.getPath(steps + 1).Item2;
+                            if (this.downL.getPath(steps + 1).Item2)
+                            {
+                                result.Item1 = this.uidOnTile.Value;
+                                result.Item3 = this.downL.getPath(steps + 1).Item3;
+                            }
+                        }
+                        if (this.upR != null)
+                        {
+                            result.Item2 = result.Item2 || this.upR.getPath(steps + 1).Item2;
+                            if (this.upR.getPath(steps + 1).Item2)
+                            {
+                                result.Item1 = this.uidOnTile.Value;
+                                result.Item3 = this.upR.getPath(steps + 1).Item3;
+                            }
+                        }
+                        if (this.upL != null)
+                        {
+                            result.Item2 = result.Item2 || this.upL.getPath(steps + 1).Item2;
+                            if (this.upL.getPath(steps + 1).Item2)
+                            {
+                                result.Item1 = this.uidOnTile.Value;
+                                result.Item3 = this.upL.getPath(steps + 1).Item3;
+                            }
+                        }
+                        if (this.below != null)
+                        {
+                            result.Item2 = result.Item2 || this.below.getPath(steps + 1).Item2;
+                            if (this.below.getPath(steps + 1).Item2)
+                            {
+                                result.Item1 = this.uidOnTile.Value;
+                                result.Item3 = this.below.getPath(steps + 1).Item3;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    result.Item2 = false;
+                }
+            }
+            return result;
         }
     }
 }
