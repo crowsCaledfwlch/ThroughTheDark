@@ -44,11 +44,11 @@ namespace TTD
                 spriteRenderer = GetComponent<SpriteRenderer>();
                 set.Value = false;
                 win.Value = false;
-                type.Value = 0;
+                type.Value = -1;
                 shape.Value = 0;
                 rotation.Value = 0;
             }
-            if (NetworkManager.Singleton.IsClient) playerObject = NetworkManager.Singleton.SpawnManager.GetLocalPlayerObject().GetComponent<tilegrid>();
+            if (NetworkManager.Singleton.IsClient) playerObject = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<tilegrid>();
         }
 
         void FixedUpdate()
@@ -328,66 +328,66 @@ namespace TTD
         void checkProcServerRpc(int EED, ulong ID)
         {
             tilegrid tgrid = NetworkManager.Singleton.ConnectedClients[ID].PlayerObject.GetComponent<tilegrid>();
-            if (tgrid.myTurn)
-            {
-                if (EED == 0)
-                { // OO
-                    if (!set.Value && type.Value != -1)
-                    {
-                        (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                        (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
-                        if (result.Item1 && result.Item2 > 1)
-                        {
-                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
-                        }
-                    }
-                }
-                else if (EED == 2)
-                { // OMD
-                    if (!set.Value && type.Value != -1)
-                    {
-                        (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                        (bool, int, bool) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value, ID);
-                        if (result.Item1 && result.Item2 > 1)
-                        {
-
-                            if (type.Value != 3 || !result.Item3)
-                            {
-
-                                colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
-                                setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
-                                tgrid.EndTurnClientRpc();
-                                type.Value = -1;
-                            }
-                        }
-                    }
-                }
-                else if (EED == 3)
+            //if (tgrid.myTurn)
+            //{
+            if (EED == 0)
+            { // OMO
+                if (!set.Value && type.Value != -1)
                 {
-                    (ulong, bool, Tile) result = getPath(0);
-                    if (result.Item2)
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
+                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                    if (result.Item1 && result.Item2 > 1)
                     {
-                        result.Item3.setPUIDServerRpc(666);
-                        setPUIDServerRpc(ID);
-                        if (win.Value == true)
-                        {
-                            tgrid.WinGameClientRpc((int)ID);
-                        }
+                        colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
                     }
                 }
-                else
-                { // OMEx and catch
-                    if (!set.Value && type.Value != -1)
+            }
+            else if (EED == 2)
+            { // OMD
+                if (!set.Value && type.Value != -1)
+                {
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
+                    (bool, int, bool) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value, ID);
+                    if (result.Item1 && result.Item2 > 1)
                     {
-                        (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
-                        (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
-                        if (result.Item1 && result.Item2 > 1)
+
+                        if (type.Value != 3 || !result.Item3)
                         {
-                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
+
+                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                            setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
+                            tgrid.EndTurnClientRpc();
+                            type.Value = -1;
                         }
                     }
                 }
             }
+            else if (EED == 3)
+            {
+                (ulong, bool, Tile) result = getPath(0);
+                if (result.Item2)
+                {
+                    result.Item3.setPUIDServerRpc(666);
+                    setPUIDServerRpc(ID);
+                    if (win.Value == true)
+                    {
+                        tgrid.WinGameClientRpc((int)ID);
+                    }
+                }
+            }
+            else
+            { // OMEx and catch
+                if (!set.Value && type.Value != -1)
+                {
+                    (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
+                    (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
+                    if (result.Item1 && result.Item2 > 1)
+                    {
+                        colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
+                    }
+                }
+            }
+            //}
         }
 
         void OnMouseOver()
@@ -417,7 +417,10 @@ namespace TTD
         {
             if (NetworkManager.Singleton.IsClient)
             {
-                checkProcServerRpc(2, NetworkManager.Singleton.LocalClientId);
+                if (playerObject.myTurn)
+                {
+                    checkProcServerRpc(2, NetworkManager.Singleton.LocalClientId);
+                }
             }
         }
 

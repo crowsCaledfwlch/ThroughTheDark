@@ -13,6 +13,7 @@ namespace TTD
         [SerializeField] private int _width;
         [SerializeField] private int _height;
         [SerializeField] private TMP_Text textBox;
+        [SerializeField] private TMP_Text turnBox;
         [SerializeField] public Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
         Dictionary<int, int> amountOfTiles = new Dictionary<int, int>() { { 0, 3 }, { 1, 3 }, { 2, 3 }, { 3, 15 }, { 4, 15 }, { 5, 15 }, { 6, 8 }, { 7, 8 } };
@@ -20,8 +21,12 @@ namespace TTD
 
         public static NetworkList<int> cardPile = new NetworkList<int>();
         public static NetworkList<ulong> players = new NetworkList<ulong>();
+        List<Tile> playerTiles = new List<Tile>();
         List<int> cards = new List<int>();
+        public int pcount;
         protected NetworkVariable<bool> _myTurn = new NetworkVariable<bool>();
+        public bool canTurnEnd = true;
+        public bool turncheck;
         public bool myTurn
         {
             get
@@ -30,8 +35,21 @@ namespace TTD
             }
             set
             {
+                if (value)
+                {
+                    turnBox.text = "Your Turn.";
+                }
+                else
+                {
+                    turnBox.text = "Not Your Turn.";
+                }
                 setMyTurnServerRpc(value);
             }
+        }
+        public void Update()
+        {
+            pcount = players.Count;
+            turncheck = myTurn;
         }
         [ServerRpc(RequireOwnership = false)]
         public void setMyTurnServerRpc(bool val)
@@ -42,6 +60,34 @@ namespace TTD
         public void WinGameClientRpc(int ID)
         {
             EndGameServerRpc(ID);
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void nextTurnServerRpc()
+        {
+            if (canTurnEnd)
+            {
+                foreach (ulong puid in players)
+                {
+                    Debug.Log(puid);
+                    if (NetworkManager.Singleton.ConnectedClients[puid].PlayerObject.GetComponent<tilegrid>().myTurn)
+                    {
+                        myTurn = false;
+                        int nextIndex = players.IndexOf(puid) + 1;
+                        if (nextIndex >= players.Count) nextIndex = 0;
+                        ulong nextID = players[nextIndex];
+                        NetworkManager.Singleton.ConnectedClients[nextID].PlayerObject.GetComponent<tilegrid>().myTurn = true;
+                        break;
+                    }
+                }
+                canTurnEnd = false;
+                StartCoroutine(waitTurnEnd());
+            }
+
+        }
+        IEnumerator waitTurnEnd()
+        {
+            yield return new WaitForSeconds(0.5f);
+            canTurnEnd = true;
         }
         [ServerRpc(RequireOwnership = false)]
         public void EndGameServerRpc(int indexOfWinner)
@@ -63,7 +109,6 @@ namespace TTD
                     card.useCard();
                 }
             }
-            myTurn = false;
             int activeCards = 0;
             int i = 0;
             System.Random random = new System.Random();
@@ -91,12 +136,20 @@ namespace TTD
                 }
                 i++;
             }
-            setNextTurnServerRpc(players.IndexOf(NetworkManager.Singleton.LocalClientId) + 1 % players.Count);
+            nextTurnServerRpc();
         }
         IEnumerator drawstartinghand()
         {
             Debug.Log("Drawing");
             yield return new WaitForSeconds(1);
+            if (players.Count == 1)
+            {
+                myTurn = true;
+            }
+            else
+            {
+                myTurn = false;
+            }
             System.Random random = new System.Random();
             for (int i = 0; i < 5; i++)
             {
@@ -109,28 +162,23 @@ namespace TTD
                 cardPieces[i].cardtype = cards[i];
                 cardPieces[i].gameObject.SetActive(true);
             }
+            turnBox.gameObject.SetActive(true);
 
         }
         public override void OnNetworkSpawn()
         {
             base.OnNetworkSpawn();
-            if (players.Count == 0)
-            {
-                myTurn = true;
-            }
-            GenerateGridServerRpc(NetworkManager.Singleton.LocalClientId);
-            if (IsOwner) StartCoroutine(drawstartinghand());
-        }
 
-        [ServerRpc(RequireOwnership = false)]
-        void setNextTurnServerRpc(int ID)
-        {
-            NetworkManager.Singleton.ConnectedClients[players[ID]].PlayerObject.GetComponent<tilegrid>().setTurnOnClientRpc();
-        }
-        [ClientRpc]
-        void setTurnOnClientRpc()
-        {
-            myTurn = true;
+            if (NetworkManager.Singleton.IsClient)
+            {
+                GenerateGridServerRpc(NetworkManager.Singleton.LocalClientId);
+            }
+            if (IsOwner)
+            {
+
+                StartCoroutine(drawstartinghand());
+            }
+
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -143,31 +191,11 @@ namespace TTD
         [ServerRpc(RequireOwnership = false)]
         void GenerateGridServerRpc(ulong ID)
         {
-            players.Add(ID);
-            int playerx, playery;
-            switch (players.Count)
+            if (!players.Contains(ID))
             {
-                case 1:
-                    playerx = -14;
-                    playery = -8;
-                    break;
-                case 2:
-                    playerx = -14;
-                    playery = 20;
-                    break;
-                case 3:
-                    playerx = 14;
-                    playery = -8;
-                    break;
-                case 4:
-                    playerx = 14;
-                    playery = 20;
-                    break;
-                default:
-                    playerx = 0;
-                    playery = 0;
-                    break;
+                players.Add(ID);
             }
+
             if (!generated.Value)
             {
                 System.Random random = new System.Random();
@@ -205,6 +233,10 @@ namespace TTD
                                 {
                                     spawnedTile.setWinClientRpc();
                                 }
+                                if ((x == -14 && y == -8) || (x == -14 && y == 20) || (x == 14 && y == -8) || (x == 14 && y == 20))
+                                {
+                                    playerTiles.Add(spawnedTile);
+                                }
                             }
                         }
                         else
@@ -223,6 +255,10 @@ namespace TTD
                             else if (x == 0 && y == 6)
                             {
                                 spawnedTile.setWinClientRpc();
+                            }
+                            if ((x == -14 && y == -8) || (x == -14 && y == 20) || (x == 14 && y == -8) || (x == 14 && y == 20))
+                            {
+                                playerTiles.Add(spawnedTile);
                             }
                         }
                         i++;
@@ -285,10 +321,10 @@ namespace TTD
                         }
                     }
                 }
+                Tile tile = playerTiles[players.Count - 1];
+                tile.setPUIDClientRpc(ID);
                 generated.Value = true;
             }
-            Tile tile = GameObject.Find($"Tile {playerx} {playery}").GetComponent<Tile>();
-            tile.setPUIDServerRpc(ID);
         }
     }
 }
