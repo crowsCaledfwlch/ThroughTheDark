@@ -13,6 +13,7 @@ namespace TTD
         [SerializeField] private int _width;
         [SerializeField] private int _height;
         [SerializeField] private TMP_Text textBox;
+        [SerializeField] private GameObject parentOStuff;
         [SerializeField] private TMP_Text turnBox;
         [SerializeField] public Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
@@ -35,7 +36,16 @@ namespace TTD
             }
             set
             {
-                if (value)
+                setMyTurnServerRpc(value);
+            }
+        }
+        public void Update()
+        {
+            pcount = players.Count;
+            if (turncheck != myTurn)
+            {
+                turncheck = myTurn;
+                if (turncheck)
                 {
                     turnBox.text = "Your Turn.";
                 }
@@ -43,13 +53,13 @@ namespace TTD
                 {
                     turnBox.text = "Not Your Turn.";
                 }
-                setMyTurnServerRpc(value);
             }
         }
-        public void Update()
+        public void Disconnect()
         {
-            pcount = players.Count;
-            turncheck = myTurn;
+            //NetworkManager.Singleton.Shutdown();
+            Destroy(NetworkManager.Singleton.gameObject);
+            UnityEngine.SceneManagement.SceneManager.LoadScene(1);
         }
         [ServerRpc(RequireOwnership = false)]
         public void setMyTurnServerRpc(bool val)
@@ -62,9 +72,9 @@ namespace TTD
             EndGameServerRpc(ID);
         }
         [ServerRpc(RequireOwnership = false)]
-        public void nextTurnServerRpc()
+        public void nextTurnServerRpc(bool monCardPlay)
         {
-            if (canTurnEnd)
+            if (canTurnEnd && !monCardPlay)
             {
                 foreach (ulong puid in players)
                 {
@@ -97,46 +107,72 @@ namespace TTD
         [ClientRpc]
         public void SendEndClientRpc(string winMessage)
         {
+            parentOStuff.SetActive(true);
             textBox.text = winMessage;
         }
         [ClientRpc]
         public void EndTurnClientRpc()
         {
+            int MaxActiveCards = 5;
+            bool monsterCardUsed = false;
             foreach (Card card in cardPieces)
             {
                 if (card.activeCard)
                 {
                     card.useCard();
+                    if (card.cardtype == 7)
+                    {
+                        MaxActiveCards = 6;
+                    }
+                    if (card.cardtype < 3)
+                    {
+                        monsterCardUsed = true;
+                        MaxActiveCards = 3;
+                    }
                 }
             }
             int activeCards = 0;
             int i = 0;
             System.Random random = new System.Random();
-            while (activeCards < 5)
+            while (i < 7)
             {
-                if (!cardPieces[i].used)
+                if (activeCards < MaxActiveCards)
                 {
-                    activeCards++;
-                }
-                else
-                {
-                    if (cardPile.Count != 0)
+                    if (!cardPieces[i].used)
                     {
-                        int key = random.Next(0, cardPile.Count);
-                        cardPieces[i].gameObject.SetActive(true);
-                        cardPieces[i].setCardType(cardPile[key]);
-                        cardPieces[i].used = false;
-                        RemoveFromPileServerRpc(cardPile[key]);
                         activeCards++;
                     }
                     else
                     {
-                        break;
+                        if (cardPile.Count != 0)
+                        {
+                            int key = random.Next(0, cardPile.Count);
+                            cardPieces[i].gameObject.SetActive(true);
+                            cardPieces[i].setCardType(cardPile[key]);
+                            cardPieces[i].used = false;
+                            RemoveFromPileServerRpc(cardPile[key]);
+                            activeCards++;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    if (!cardPieces[i].used)
+                    {
+                        cardPieces[i].useCard();
+                        cardPieces[i].gameObject.SetActive(false);
                     }
                 }
                 i++;
             }
-            nextTurnServerRpc();
+            if (!monsterCardUsed)
+            {
+                nextTurnServerRpc(monsterCardUsed);
+            }
         }
         IEnumerator drawstartinghand()
         {
@@ -177,6 +213,15 @@ namespace TTD
             {
 
                 StartCoroutine(drawstartinghand());
+            }
+            turncheck = myTurn;
+            if (turncheck)
+            {
+                turnBox.text = "Your Turn.";
+            }
+            else
+            {
+                turnBox.text = "Not Your Turn.";
             }
 
         }
@@ -321,10 +366,10 @@ namespace TTD
                         }
                     }
                 }
-                Tile tile = playerTiles[players.Count - 1];
-                tile.setPUIDClientRpc(ID);
                 generated.Value = true;
             }
+            Tile tile = playerTiles[players.Count - 1];
+            tile.setPUIDClientRpc(ID);
         }
     }
 }

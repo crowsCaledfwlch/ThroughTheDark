@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-
 using Unity.Netcode;
 using UnityEngine;
 
@@ -16,10 +15,11 @@ namespace TTD
         public NetworkVariable<bool> win = new NetworkVariable<bool>();
 
         [Range(0, 3)] // 0 plain, 1 treasure, 2 monster, 3 pitfall
-        static private NetworkVariable<int> type = new NetworkVariable<int>();
+        static public NetworkVariable<int> type = new NetworkVariable<int>();
 
         [Range(0, 2)] // 00 line, 01 blob, 02 corner, 10-2 2 tiles, 20 M, 21 Y, 22 line, 30-2 big C
         static private NetworkVariable<int> shape = new NetworkVariable<int>();
+        static private NetworkList<Color> playerColors = new NetworkList<Color>();
 
         [Range(0, 5)]
         static NetworkVariable<int> rotation = new NetworkVariable<int>();
@@ -37,6 +37,7 @@ namespace TTD
         bool mouseOver = false;
         void Start()
         {
+            StartCoroutine(BlinkColor());
             tileBase = this;
             if (NetworkManager.Singleton.IsServer)
             {
@@ -50,16 +51,91 @@ namespace TTD
             }
             if (NetworkManager.Singleton.IsClient) playerObject = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<tilegrid>();
         }
+        IEnumerator BlinkWhite()
+        {
+            yield return new WaitForSeconds(.4f);
+            if (spriteRenderer.color != Color.white) spriteRenderer.color = Color.white;
+            if (!set.Value && !win.Value)
+            {
+                if (setColor.Value != Color.white) setColorServerRpc(Color.white);
+                StartCoroutine(BlinkColor());
+            }
+        }
+        IEnumerator BlinkColor()
+        {
+            yield return new WaitForSeconds(.4f);
+            if (spriteRenderer.color != setColor.Value) spriteRenderer.color = setColor.Value;
+            if (!set.Value && !win.Value)
+            {
+                StartCoroutine(BlinkWhite());
+            }
+        }
 
         void FixedUpdate()
         {
-
             if (spriteRenderer == null)
             {
                 spriteRenderer = GetComponent<SpriteRenderer>();
             }
-            if (spriteRenderer.color != setColor.Value) spriteRenderer.color = setColor.Value;
-            if (uidOnTile.Value != 666) { spriteRenderer.color = Color.magenta; }
+            if (set.Value || win.Value && spriteRenderer.color != setColor.Value) spriteRenderer.color = setColor.Value;
+            if (uidOnTile.Value != 666)
+            {
+                switch (uidOnTile.Value)
+                {
+                    case (ulong)0:
+                        if (playerColors.Count > 0)
+                        {
+                            spriteRenderer.color = playerColors[0];
+                        }
+                        else
+                        {
+                            spriteRenderer.color = Color.magenta;
+                        }
+                        break;
+                    case (ulong)1:
+                        if (playerColors.Count > 1)
+                        {
+                            spriteRenderer.color = playerColors[1];
+                        }
+                        else
+                        {
+                            spriteRenderer.color = Color.magenta;
+                        }
+                        break;
+                    case (ulong)2:
+                        if (playerColors.Count > 2)
+                        {
+                            spriteRenderer.color = playerColors[2];
+                        }
+                        else
+                        {
+                            spriteRenderer.color = Color.magenta;
+                        }
+                        break;
+                    case (ulong)3:
+                        if (playerColors.Count > 3)
+                        {
+                            spriteRenderer.color = playerColors[3];
+                        }
+                        else
+                        {
+                            spriteRenderer.color = Color.magenta;
+                        }
+                        break;
+                    default:
+                        spriteRenderer.color = Color.magenta;
+                        break;
+                }
+            }
+        }
+        public static void addPlayerColor(Color color)
+        {
+            tileBase.addPCServerRpc(color);
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void addPCServerRpc(Color color)
+        {
+            playerColors.Add(color);
         }
         public void setXY(int x, int y)
         {
@@ -126,6 +202,7 @@ namespace TTD
             this.setColor.Value = Color.green;
             this.win.Value = true;
         }
+        bool canRotate = true;
         [ServerRpc(RequireOwnership = false)]
         void rotateServerRpc()
         {
@@ -135,7 +212,15 @@ namespace TTD
                 rotation.Value = 0;
             }
         }
-
+        IEnumerator setCanRotate()
+        {
+            yield return new WaitForSeconds(.2f);
+            if (canRotate)
+            {
+                canRotate = false;
+                rotateServerRpc();
+            }
+        }
         void Update()
         {
             if (NetworkManager.Singleton.IsClient)
@@ -143,7 +228,14 @@ namespace TTD
                 if (Input.GetKeyDown("r") && mouseOver && playerObject.myTurn)
                 {
                     checkProcServerRpc(1, NetworkManager.Singleton.LocalClientId);
-                    rotateServerRpc();
+                    StartCoroutine(setCanRotate());
+                    checkProcServerRpc(0, NetworkManager.Singleton.LocalClientId);
+                }
+                if (Input.GetKeyUp("r") && mouseOver && playerObject.myTurn)
+                {
+                    checkProcServerRpc(1, NetworkManager.Singleton.LocalClientId);
+                    canRotate = true;
+                    checkProcServerRpc(0, NetworkManager.Singleton.LocalClientId);
                 }
                 if (Input.GetMouseButton(1) && mouseOver && playerObject.myTurn)
                 {
@@ -340,6 +432,17 @@ namespace TTD
                     {
                         colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
                     }
+                    else
+                    {
+                        try
+                        {
+                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -2, rotation.Value);
+                        }
+                        catch
+                        {
+
+                        }
+                    }
                 }
             }
             else if (EED == 2)
@@ -381,15 +484,21 @@ namespace TTD
                 {
                     (int, int, int, int) nextStep = tilesPositions[(type.Value, shape.Value)];
                     (bool, int) result = checkTiles(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, this, rotation.Value);
-                    if (result.Item1 && result.Item2 > 1)
+                    if (result.Item1)
                     {
-                        colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
+                        try
+                        {
+                            colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, -1, rotation.Value);
+                        }
+                        catch
+                        {
+
+                        }
                     }
                 }
             }
             //}
         }
-
         void OnMouseOver()
         {
             if (NetworkManager.Singleton.IsClient)
@@ -437,6 +546,9 @@ namespace TTD
             {
                 switch (type)
                 {
+                    case -2:
+                        setColorServerRpc(Color.cyan);
+                        break;
                     case -1:
                         setColorServerRpc(Color.white);
                         break;
@@ -465,6 +577,9 @@ namespace TTD
                 Tile tempTile = null;
                 switch (type)
                 {
+                    case -2:
+                        setColorServerRpc(Color.cyan);
+                        break;
                     case -1:
                         setColorServerRpc(Color.white);
                         break;
@@ -481,11 +596,6 @@ namespace TTD
                         setColorServerRpc(Color.black);
                         break;
                 }
-                if (spriteRenderer == null)
-                {
-                    spriteRenderer = GetComponent<SpriteRenderer>();
-                }
-                spriteRenderer.color = setColor.Value;
 
                 if (ints[0] == 0) return;
                 try
@@ -513,7 +623,7 @@ namespace TTD
                     }
                     tempTile.colorTilesClientRpc(temp, type, rotation);
                 }
-                catch (Exception e)
+                catch
                 {
 
                 }
@@ -570,7 +680,7 @@ namespace TTD
                     }
                     tempTile.setTrueClientRpc(temp, type, rotation);
                 }
-                catch (Exception e)
+                catch
                 {
 
                 }
@@ -579,7 +689,7 @@ namespace TTD
         public (ulong, bool, Tile) getPath(int steps)
         {
             (ulong, bool, Tile) result = (this.uidOnTile.Value, false, this);
-            if (steps < 3)
+            if (steps < 3 && spriteRenderer.color != Color.black)
             {
                 if (set.Value || win.Value)
                 {
