@@ -11,18 +11,18 @@ namespace TTD
         public Tile above, upR, downR, below, downL, upL; // 1 2 3 4 5 6. 1->3->6->4->5->2->1
         private int x, y;
         [SerializeField] private NetworkVariable<ulong> uidOnTile = new NetworkVariable<ulong>();
-        public NetworkVariable<bool> set = new NetworkVariable<bool>();
-        public NetworkVariable<bool> win = new NetworkVariable<bool>();
+        public NetworkVariable<bool> set;
+        public NetworkVariable<bool> win;
 
         [Range(0, 3)] // 0 plain, 1 treasure, 2 monster, 3 pitfall
-        static public NetworkVariable<int> type = new NetworkVariable<int>();
+        static public NetworkVariable<int> type;
 
         [Range(0, 2)] // 00 line, 01 blob, 02 corner, 10-2 2 tiles, 20 M, 21 Y, 22 line, 30-2 big C
-        static private NetworkVariable<int> shape = new NetworkVariable<int>();
-        static private NetworkList<Color> playerColors = new NetworkList<Color>();
+        static private NetworkVariable<int> shape;
+        static private NetworkList<Color> playerColors;
 
         [Range(0, 5)]
-        static NetworkVariable<int> rotation = new NetworkVariable<int>();
+        static NetworkVariable<int> rotation;
         static Tile tileBase;
         tilegrid playerObject;
         Dictionary<(int, int), (int, int, int, int)> tilesPositions = new Dictionary<(int, int), (int, int, int, int)>()
@@ -33,7 +33,17 @@ namespace TTD
                 {(3,0), (6,1,1,2)}
             };
         private SpriteRenderer spriteRenderer;
-        private NetworkVariable<Color> setColor = new NetworkVariable<Color>();
+        private NetworkVariable<Color> setColor;
+        void Awake()
+        {
+            set = new NetworkVariable<bool>();
+            win = new NetworkVariable<bool>();
+            type = new NetworkVariable<int>();
+            shape = new NetworkVariable<int>();
+            playerColors = new NetworkList<Color>();
+            rotation = new NetworkVariable<int>();
+            setColor = new NetworkVariable<Color>();
+        }
         bool mouseOver = false;
         void Start()
         {
@@ -51,9 +61,15 @@ namespace TTD
             }
             if (NetworkManager.Singleton.IsClient) playerObject = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<tilegrid>();
         }
+        public override void OnDestroy()
+        {
+            base.OnDestroy();
+            //playerColors?.Dispose();
+            setColor?.Dispose();
+        }
         IEnumerator BlinkWhite()
         {
-            yield return new WaitForSeconds(.4f);
+            yield return new WaitForSeconds(.3f);
             if (spriteRenderer.color != Color.white) spriteRenderer.color = Color.white;
             if (!set.Value && !win.Value)
             {
@@ -63,7 +79,7 @@ namespace TTD
         }
         IEnumerator BlinkColor()
         {
-            yield return new WaitForSeconds(.4f);
+            yield return new WaitForSeconds(.3f);
             if (spriteRenderer.color != setColor.Value) spriteRenderer.color = setColor.Value;
             if (!set.Value && !win.Value)
             {
@@ -214,11 +230,16 @@ namespace TTD
         }
         IEnumerator setCanRotate()
         {
-            yield return new WaitForSeconds(.2f);
             if (canRotate)
             {
+                yield return new WaitForSeconds(.2f);
+
                 canRotate = false;
                 rotateServerRpc();
+            }
+            else
+            {
+                yield return new WaitForSeconds(.2f);
             }
         }
         void Update()
@@ -459,7 +480,7 @@ namespace TTD
 
                             colorTilesClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
                             setTrueClientRpc(new int[] { nextStep.Item1, nextStep.Item2, nextStep.Item3, nextStep.Item4 }, type.Value, rotation.Value);
-                            tgrid.EndTurnClientRpc();
+                            tgrid.EndTurnClientRpc(ID);
                             type.Value = -1;
                         }
                     }
@@ -542,90 +563,93 @@ namespace TTD
         [ClientRpc]
         void colorTilesClientRpc(int[] ints, int type, int rotation)
         {
-            if (ints.Length == 0)
+            if (!set.Value && !win.Value)
             {
-                switch (type)
+                if (ints.Length == 0)
                 {
-                    case -2:
-                        setColorServerRpc(Color.cyan);
-                        break;
-                    case -1:
-                        setColorServerRpc(Color.white);
-                        break;
-                    case 0:
-                        setColorServerRpc(Color.yellow);
-                        break;
-                    case 1:
-                        setColorServerRpc(Color.blue);
-                        break;
-                    case 2:
-                        setColorServerRpc(Color.red);
-                        break;
-                    case 3:
-                        setColorServerRpc(Color.black);
-                        break;
-                }
-            }
-            else
-            {
-
-                int[] temp = new int[ints.Length - 1];
-                for (int i = 1; i < ints.Length; i++)
-                {
-                    temp[i - 1] = ints[i];
-                }
-                Tile tempTile = null;
-                switch (type)
-                {
-                    case -2:
-                        setColorServerRpc(Color.cyan);
-                        break;
-                    case -1:
-                        setColorServerRpc(Color.white);
-                        break;
-                    case 0:
-                        setColorServerRpc(Color.yellow);
-                        break;
-                    case 1:
-                        setColorServerRpc(Color.blue);
-                        break;
-                    case 2:
-                        setColorServerRpc(Color.red);
-                        break;
-                    case 3:
-                        setColorServerRpc(Color.black);
-                        break;
-                }
-
-                if (ints[0] == 0) return;
-                try
-                {
-                    switch ((ints[0] + rotation) % 6)
+                    switch (type)
                     {
-                        case 1:
-                            tempTile = this.above;
+                        case -2:
+                            setColorServerRpc(Color.cyan);
                             break;
-                        case 2:
-                            tempTile = this.upR;
-                            break;
-                        case 3:
-                            tempTile = this.downR;
-                            break;
-                        case 4:
-                            tempTile = this.below;
-                            break;
-                        case 5:
-                            tempTile = this.downL;
+                        case -1:
+                            setColorServerRpc(Color.white);
                             break;
                         case 0:
-                            tempTile = this.upL;
+                            setColorServerRpc(Color.yellow);
+                            break;
+                        case 1:
+                            setColorServerRpc(Color.blue);
+                            break;
+                        case 2:
+                            setColorServerRpc(Color.red);
+                            break;
+                        case 3:
+                            setColorServerRpc(Color.black);
                             break;
                     }
-                    tempTile.colorTilesClientRpc(temp, type, rotation);
                 }
-                catch
+                else
                 {
 
+                    int[] temp = new int[ints.Length - 1];
+                    for (int i = 1; i < ints.Length; i++)
+                    {
+                        temp[i - 1] = ints[i];
+                    }
+                    Tile tempTile = null;
+                    switch (type)
+                    {
+                        case -2:
+                            setColorServerRpc(Color.cyan);
+                            break;
+                        case -1:
+                            setColorServerRpc(Color.white);
+                            break;
+                        case 0:
+                            setColorServerRpc(Color.yellow);
+                            break;
+                        case 1:
+                            setColorServerRpc(Color.blue);
+                            break;
+                        case 2:
+                            setColorServerRpc(Color.red);
+                            break;
+                        case 3:
+                            setColorServerRpc(Color.black);
+                            break;
+                    }
+
+                    if (ints[0] == 0) return;
+                    try
+                    {
+                        switch ((ints[0] + rotation) % 6)
+                        {
+                            case 1:
+                                tempTile = this.above;
+                                break;
+                            case 2:
+                                tempTile = this.upR;
+                                break;
+                            case 3:
+                                tempTile = this.downR;
+                                break;
+                            case 4:
+                                tempTile = this.below;
+                                break;
+                            case 5:
+                                tempTile = this.downL;
+                                break;
+                            case 0:
+                                tempTile = this.upL;
+                                break;
+                        }
+                        tempTile.colorTilesClientRpc(temp, type, rotation);
+                    }
+                    catch
+                    {
+
+                    }
                 }
             }
         }

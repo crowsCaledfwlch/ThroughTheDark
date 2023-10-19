@@ -4,6 +4,7 @@ using UnityEngine;
 using Unity.Netcode;
 using TMPro;
 using System;
+using UnityEngine.SceneManagement;
 
 namespace TTD
 {
@@ -18,14 +19,14 @@ namespace TTD
         [SerializeField] public Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
         Dictionary<int, int> amountOfTiles = new Dictionary<int, int>() { { 0, 3 }, { 1, 3 }, { 2, 3 }, { 3, 15 }, { 4, 15 }, { 5, 15 }, { 6, 8 }, { 7, 8 } };
-        static NetworkVariable<bool> generated = new NetworkVariable<bool>();
+        static NetworkVariable<bool> generated;
 
-        public static NetworkList<int> cardPile = new NetworkList<int>();
-        public static NetworkList<ulong> players = new NetworkList<ulong>();
+        public static NetworkList<int> cardPile;
+        public static NetworkList<ulong> players;
         List<Tile> playerTiles = new List<Tile>();
         List<int> cards = new List<int>();
         public int pcount;
-        protected NetworkVariable<bool> _myTurn = new NetworkVariable<bool>();
+        protected NetworkVariable<bool> _myTurn;
         public bool canTurnEnd = true;
         public bool turncheck;
         public bool myTurn
@@ -38,6 +39,20 @@ namespace TTD
             {
                 setMyTurnServerRpc(value);
             }
+        }
+
+        public override void OnDestroy()
+        {
+            base.OnDestroy();
+            //cardPile?.Dispose();
+            players?.Dispose();
+        }
+        public void Awake()
+        {
+            generated = new NetworkVariable<bool>();
+            cardPile = new NetworkList<int>();
+            players = new NetworkList<ulong>();
+            _myTurn = new NetworkVariable<bool>();
         }
         public void Update()
         {
@@ -57,9 +72,14 @@ namespace TTD
         }
         public void Disconnect()
         {
-            //NetworkManager.Singleton.Shutdown();
+            NetworkManager.Singleton.Shutdown();
             Destroy(NetworkManager.Singleton.gameObject);
-            UnityEngine.SceneManagement.SceneManager.LoadScene(1);
+            SceneManager.LoadScene(0);
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void ResetGeneratedServerRpc()
+        {
+            generated.Value = false;
         }
         [ServerRpc(RequireOwnership = false)]
         public void setMyTurnServerRpc(bool val)
@@ -111,74 +131,77 @@ namespace TTD
             textBox.text = winMessage;
         }
         [ClientRpc]
-        public void EndTurnClientRpc()
+        public void EndTurnClientRpc(ulong id)
         {
-            int MaxActiveCards = 5;
-            bool monsterCardUsed = false;
-            foreach (Card card in cardPieces)
+            if (NetworkManager.Singleton.LocalClientId == id)
             {
-                if (card.activeCard)
+                int MaxActiveCards = 5;
+                bool monsterCardUsed = false;
+                foreach (Card card in cardPieces)
                 {
-                    card.useCard();
-                    if (card.cardtype == 7)
+                    if (card.activeCard)
                     {
-                        MaxActiveCards = 6;
-                    }
-                    if (card.cardtype < 3)
-                    {
-                        monsterCardUsed = true;
-                        MaxActiveCards = 3;
+                        card.useCard();
+                        if (card.cardtype == 7)
+                        {
+                            MaxActiveCards = 6;
+                        }
+                        if (card.cardtype < 3)
+                        {
+                            monsterCardUsed = true;
+                            MaxActiveCards = 3;
+                        }
                     }
                 }
-            }
-            int activeCards = 0;
-            int i = 0;
-            System.Random random = new System.Random();
-            while (i < 7)
-            {
-                if (activeCards < MaxActiveCards)
+                int activeCards = 0;
+                int i = 0;
+                System.Random random = new System.Random();
+                while (i < 7)
                 {
-                    if (!cardPieces[i].used)
+                    if (activeCards < MaxActiveCards)
                     {
-                        activeCards++;
-                    }
-                    else
-                    {
-                        if (cardPile.Count != 0)
+                        if (!cardPieces[i].used)
                         {
-                            int key = random.Next(0, cardPile.Count);
-                            cardPieces[i].gameObject.SetActive(true);
-                            cardPieces[i].setCardType(cardPile[key]);
-                            cardPieces[i].used = false;
-                            RemoveFromPileServerRpc(cardPile[key]);
                             activeCards++;
                         }
                         else
                         {
-                            break;
+                            if (cardPile.Count != 0)
+                            {
+                                int key = random.Next(0, cardPile.Count);
+                                cardPieces[i].gameObject.SetActive(true);
+                                cardPieces[i].setCardType(cardPile[key]);
+                                cardPieces[i].used = false;
+                                RemoveFromPileServerRpc(cardPile[key]);
+                                activeCards++;
+                            }
+                            else
+                            {
+                                break;
+                            }
                         }
                     }
-                }
-                else
-                {
-                    if (!cardPieces[i].used)
+                    else
                     {
-                        cardPieces[i].useCard();
-                        cardPieces[i].gameObject.SetActive(false);
+                        if (!cardPieces[i].used)
+                        {
+                            cardPieces[i].useCard();
+                            cardPieces[i].gameObject.SetActive(false);
+                        }
                     }
+                    i++;
                 }
-                i++;
-            }
-            if (!monsterCardUsed)
-            {
-                nextTurnServerRpc(monsterCardUsed);
+                if (!monsterCardUsed)
+                {
+                    nextTurnServerRpc(monsterCardUsed);
+                }
             }
         }
-        IEnumerator drawstartinghand()
+        IEnumerator drawstartinghand(ulong ID)
         {
             Debug.Log("Drawing");
             yield return new WaitForSeconds(1);
-            if (players.Count == 1)
+            if (players.Count == 1 || players.IndexOf(ID) == 0)
             {
                 myTurn = true;
             }
@@ -212,7 +235,7 @@ namespace TTD
             if (IsOwner)
             {
 
-                StartCoroutine(drawstartinghand());
+                StartCoroutine(drawstartinghand(NetworkManager.Singleton.LocalClientId));
             }
             turncheck = myTurn;
             if (turncheck)
@@ -252,6 +275,12 @@ namespace TTD
                     }
                 }
                 tiles = new Dictionary<(int, int), Tile>();
+                Tile spawnedTile2;
+                spawnedTile2 = Instantiate(_tilePrefab, new Vector3(1000 - .5f, 0, -.5f), Quaternion.identity);
+                spawnedTile2.name = $"Tile {1000} {0}";
+                spawnedTile2.setXY(1000, 0);
+                spawnedTile2.setPUIDServerRpc(6666);
+                spawnedTile2.GetComponent<NetworkObject>().Spawn();
                 // very complicated math to make the grid and center it
                 for (int x = (-1 * _width) + 1; x < _width + 2; x += 2)
                 {
