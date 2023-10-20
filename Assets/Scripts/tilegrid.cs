@@ -19,10 +19,9 @@ namespace TTD
         [SerializeField] public Card[] cardPieces;
         Dictionary<(int, int), Tile> tiles;
         Dictionary<int, int> amountOfTiles = new Dictionary<int, int>() { { 0, 3 }, { 1, 3 }, { 2, 3 }, { 3, 15 }, { 4, 15 }, { 5, 15 }, { 6, 8 }, { 7, 8 } };
-        static NetworkVariable<bool> generated;
-
-        public static NetworkList<int> cardPile;
-        public static NetworkList<ulong> players;
+        static NetworkVariable<bool> generated = new NetworkVariable<bool>();
+        public static NetworkList<int> cardPile = new NetworkList<int>();
+        public static NetworkList<ulong> players = new NetworkList<ulong>();
         List<Tile> playerTiles = new List<Tile>();
         List<int> cards = new List<int>();
         public int pcount;
@@ -49,9 +48,6 @@ namespace TTD
         }
         public void Awake()
         {
-            generated = new NetworkVariable<bool>();
-            cardPile = new NetworkList<int>();
-            players = new NetworkList<ulong>();
             _myTurn = new NetworkVariable<bool>();
         }
         public void Update()
@@ -71,6 +67,16 @@ namespace TTD
             }
         }
         public void Disconnect()
+        {
+            DisServerRpc();
+        }
+        [ServerRpc(RequireOwnership = false)]
+        public void DisServerRpc()
+        {
+            DisClientRpc();
+        }
+        [ClientRpc]
+        public void DisClientRpc()
         {
             NetworkManager.Singleton.Shutdown();
             Destroy(NetworkManager.Singleton.gameObject);
@@ -275,12 +281,6 @@ namespace TTD
                     }
                 }
                 tiles = new Dictionary<(int, int), Tile>();
-                Tile spawnedTile2;
-                spawnedTile2 = Instantiate(_tilePrefab, new Vector3(1000 - .5f, 0, -.5f), Quaternion.identity);
-                spawnedTile2.name = $"Tile {1000} {0}";
-                spawnedTile2.setXY(1000, 0);
-                spawnedTile2.setPUIDServerRpc(6666);
-                spawnedTile2.GetComponent<NetworkObject>().Spawn();
                 // very complicated math to make the grid and center it
                 for (int x = (-1 * _width) + 1; x < _width + 2; x += 2)
                 {

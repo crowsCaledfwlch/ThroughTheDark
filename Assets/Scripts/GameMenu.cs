@@ -51,8 +51,8 @@ namespace TTD
                 if (newCol == Color.white) newCol = Color.magenta;
 
                 NetworkManager.Singleton.StartHost();
+                errorbox.text = "Loading you in...";
                 StartCoroutine(SetColor(newCol));
-                parentofstuff.SetActive(false);
             }
             else
             {
@@ -61,8 +61,9 @@ namespace TTD
         }
         IEnumerator SetColor(Color col)
         {
-            yield return new WaitForSeconds(1);
+            yield return new WaitForSeconds(2);
             Tile.addPlayerColor(col);
+            parentofstuff.SetActive(false);
         }
         public void OnStartClient()
         {
@@ -78,8 +79,8 @@ namespace TTD
                 if (NetworkManager.Singleton.StartClient())
                 {
                     connection.text = "Connected to: " + ip.text;
+                    errorbox.text = "Loading you in...";
                     StartCoroutine(SetColor(newCol));
-                    parentofstuff.SetActive(false);
                 }
                 else
                 {

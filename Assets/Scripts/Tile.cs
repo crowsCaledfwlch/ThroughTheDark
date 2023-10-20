@@ -19,7 +19,7 @@ namespace TTD
 
         [Range(0, 2)] // 00 line, 01 blob, 02 corner, 10-2 2 tiles, 20 M, 21 Y, 22 line, 30-2 big C
         static private NetworkVariable<int> shape;
-        static private NetworkList<Color> playerColors;
+        static private NetworkList<Color> playerColors = new NetworkList<Color>();
 
         [Range(0, 5)]
         static NetworkVariable<int> rotation;
@@ -40,7 +40,6 @@ namespace TTD
             win = new NetworkVariable<bool>();
             type = new NetworkVariable<int>();
             shape = new NetworkVariable<int>();
-            playerColors = new NetworkList<Color>();
             rotation = new NetworkVariable<int>();
             setColor = new NetworkVariable<Color>();
         }
