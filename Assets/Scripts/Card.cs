@@ -13,9 +13,11 @@ namespace TTD
         public static Card lastCard;
         public bool used = false;
         public bool activeCard = false;
+        tilegrid playerObject;
         void Start()
         {
             setCardType(cardtype);
+            if (NetworkManager.Singleton.IsClient) playerObject = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<tilegrid>();
         }
 
         public void useCard()
@@ -39,63 +41,67 @@ namespace TTD
                 transform.position = new Vector3(transform.position.x, transform.position.y + .1f, transform.position.z);
             }
         }
-        void OnMouseExit()
+        public void OnMouseExit()
         {
             transform.position = new Vector3(transform.position.x, -10, transform.position.z);
         }
 
         void OnMouseDown()
         {
-            int t, s;
-            t = 0;
-            s = 0;
-            switch (cardtype)
+            if (playerObject.myTurn)
             {
-                case 0:
-                    t = 2;
-                    s = 0;
-                    break;
-                case 1:
-                    t = 2;
-                    s = 1;
-                    break;
-                case 2:
-                    t = 2;
-                    s = 2;
-                    break;
-                case 3:
-                    t = 0;
-                    s = 0;
-                    break;
-                case 4:
-                    t = 0;
-                    s = 2;
-                    break;
-                case 5:
-                    t = 0;
-                    s = 1;
-                    break;
-                case 6:
-                    t = 3;
-                    s = 0;
-                    break;
-                case 7:
-                    t = 1;
-                    s = 0;
-                    break;
-            }
-            Tile.setTS(t, s);
-            if (lastCard != null)
-            {
-                if (lastCard.used != true)
+                int t, s;
+                t = 0;
+                s = 0;
+                switch (cardtype)
                 {
-                    lastCard.gameObject.SetActive(true);
-                    lastCard.activeCard = false;
+                    case 0:
+                        t = 2;
+                        s = 0;
+                        break;
+                    case 1:
+                        t = 2;
+                        s = 1;
+                        break;
+                    case 2:
+                        t = 2;
+                        s = 2;
+                        break;
+                    case 3:
+                        t = 0;
+                        s = 0;
+                        break;
+                    case 4:
+                        t = 0;
+                        s = 2;
+                        break;
+                    case 5:
+                        t = 0;
+                        s = 1;
+                        break;
+                    case 6:
+                        t = 3;
+                        s = 0;
+                        break;
+                    case 7:
+                        t = 1;
+                        s = 0;
+                        break;
                 }
+                Tile.setTS(t, s);
+                if (lastCard != null)
+                {
+                    if (lastCard.used != true)
+                    {
+                        lastCard.gameObject.SetActive(true);
+                        lastCard.OnMouseExit();
+                        lastCard.activeCard = false;
+                    }
+                }
+                lastCard = this;
+                activeCard = true;
+                gameObject.SetActive(false);
             }
-            lastCard = this;
-            activeCard = true;
-            gameObject.SetActive(false);
         }
     }
 }

@@ -487,8 +487,9 @@ namespace TTD
             }
             else if (EED == 3)
             {
+
                 (ulong, bool, Tile) result = getPath(0);
-                if (result.Item2)
+                if (result.Item2 && result.Item1 == ID)
                 {
                     result.Item3.setPUIDServerRpc(666);
                     setPUIDServerRpc(ID);
@@ -729,7 +730,7 @@ namespace TTD
                             result.Item2 = result.Item2 || this.above.getPath(steps + 1).Item2;
                             if (this.above.getPath(steps + 1).Item2)
                             {
-                                result.Item1 = this.uidOnTile.Value;
+                                result.Item1 = this.above.getPath(steps + 1).Item1;
                                 result.Item3 = this.above.getPath(steps + 1).Item3;
                             }
                         }
@@ -738,7 +739,7 @@ namespace TTD
                             result.Item2 = result.Item2 || this.downR.getPath(steps + 1).Item2;
                             if (this.downR.getPath(steps + 1).Item2)
                             {
-                                result.Item1 = this.uidOnTile.Value;
+                                result.Item1 = this.downR.getPath(steps + 1).Item1;
                                 result.Item3 = this.downR.getPath(steps + 1).Item3;
                             }
                         }
@@ -747,7 +748,7 @@ namespace TTD
                             result.Item2 = result.Item2 || this.downL.getPath(steps + 1).Item2;
                             if (this.downL.getPath(steps + 1).Item2)
                             {
-                                result.Item1 = this.uidOnTile.Value;
+                                result.Item1 = this.downL.getPath(steps + 1).Item1;
                                 result.Item3 = this.downL.getPath(steps + 1).Item3;
                             }
                         }
@@ -756,7 +757,7 @@ namespace TTD
                             result.Item2 = result.Item2 || this.upR.getPath(steps + 1).Item2;
                             if (this.upR.getPath(steps + 1).Item2)
                             {
-                                result.Item1 = this.uidOnTile.Value;
+                                result.Item1 = this.upR.getPath(steps + 1).Item1;
                                 result.Item3 = this.upR.getPath(steps + 1).Item3;
                             }
                         }
@@ -765,7 +766,7 @@ namespace TTD
                             result.Item2 = result.Item2 || this.upL.getPath(steps + 1).Item2;
                             if (this.upL.getPath(steps + 1).Item2)
                             {
-                                result.Item1 = this.uidOnTile.Value;
+                                result.Item1 = this.upL.getPath(steps + 1).Item1;
                                 result.Item3 = this.upL.getPath(steps + 1).Item3;
                             }
                         }
@@ -774,7 +775,7 @@ namespace TTD
                             result.Item2 = result.Item2 || this.below.getPath(steps + 1).Item2;
                             if (this.below.getPath(steps + 1).Item2)
                             {
-                                result.Item1 = this.uidOnTile.Value;
+                                result.Item1 = this.below.getPath(steps + 1).Item1;
                                 result.Item3 = this.below.getPath(steps + 1).Item3;
                             }
                         }

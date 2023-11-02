@@ -75,7 +75,7 @@ MonoBehaviour:
     \t* When a player places a tile,
     their turn ends.
 
-    \t* A tile card must be pick (left click) before a tile
+    \t* A tile card must be picked (left click) before a tile
     can be placed'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

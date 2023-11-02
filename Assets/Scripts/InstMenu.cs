@@ -7,6 +7,8 @@ namespace TTD
 {
     public class InstMenu : MonoBehaviour
     {
+        public GameObject back;
+        public GameObject next;
         int pageNum = 0;
         public GameObject[] pages;
         void Awake()
@@ -26,6 +28,14 @@ namespace TTD
             {
                 pageNum = 0;
             }
+            if (pageNum > 0)
+            {
+                back.SetActive(true);
+            }
+            if (pageNum == pages.Length - 1)
+            {
+                next.SetActive(false);
+            }
             pages[pageNum].SetActive(true);
             pages[pageNum].GetComponent<Page>().SetPageNum(pageNum + 1);
 
@@ -37,6 +47,14 @@ namespace TTD
             if (pageNum < 0)
             {
                 pageNum = pages.Length - 1;
+            }
+            if (pageNum == 0)
+            {
+                back.SetActive(false);
+            }
+            if (pageNum < pages.Length - 1)
+            {
+                next.SetActive(true);
             }
             pages[pageNum].SetActive(true);
             pages[pageNum].GetComponent<Page>().SetPageNum(pageNum + 1);
